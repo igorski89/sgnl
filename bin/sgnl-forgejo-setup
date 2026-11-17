@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# One-time Forgejo setup that lives in its database, not in env. Idempotent.
+# See docs/USERS.md ("Forgejo") and config/deploy.forgejo.yml.
+#
+#   bin/sgnl-forgejo-setup auth   # the "authelia" login source (OIDC, Keycloak)
+#   bin/sgnl-forgejo-setup org    # org example + team Developers;
+#                                 # needs an admin who logged in once (alice)
+#
+# Roles come from groups in the OIDC groups claim, re-applied at every
+# login: admins -> Forgejo site admin, developers -> team Developers in
+# org example. Who may log in at all is Keycloak's flow
+# sgnl-forgejo (group forgejo_users, keycloak/realm.yaml).
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+HOST=root@$SGNL_HOST
+URL=https://git.$SGNL_APPS_DOMAIN
+ORG=$SGNL_ORG_SLUG
+ADMIN_USER=${ADMIN_USER:-$SGNL_ADMIN_USER}
+TEAM_MAP="{\"developers\":{\"$SGNL_ORG_SLUG\":[\"Developers\"]}}"
+
+fj() { # run the forgejo CLI in the container; extra stdin passes through
+  ssh "$HOST" "docker exec -i \$(docker ps -qf label=service=sgnl-forgejo | head -1) $*"
+}
+
+case ${1:-} in
+  auth)
+    # Name stays "authelia" although it now points at Keycloak (2026-10-19):
+    # the name is in the callback URL registered in keycloak/realm.yaml,
+    # and users are linked to this source + their `sub` (same ids in
+    # Keycloak), so renaming would orphan every account.
+    id=$(fj forgejo admin auth list | awk '$2=="authelia"{print $1}')
+    if [[ -n $id ]]; then verb="update-oauth --id $id" done=updated; else verb=add-oauth done=created; fi
+    # The client secret goes over stdin; inside the container it is briefly
+    # an argument of the forgejo process (the CLI has no other way).
+    "$(dirname "$0")/sgnl-secret" keycloak-forgejo-client-secret |
+      fj sh -c "'read -r S; exec forgejo admin auth $verb --name authelia --provider openidConnect \
+        --key forgejo --secret \"\$S\" \
+        --auto-discover-url https://id.$SGNL_APPS_DOMAIN/realms/$SGNL_REALM/.well-known/openid-configuration \
+        --scopes openid --scopes profile --scopes email --scopes groups \
+        --skip-local-2fa \
+        --group-claim-name groups --admin-group admins \
+        --group-team-map '\''$TEAM_MAP'\'' --group-team-map-removal'"
+    echo "auth source authelia (-> Keycloak): $done; restart Forgejo to apply (docker restart, not kamal app boot: see config/deploy.forgejo.yml)"
+    fj forgejo admin auth list ;;
+
+  org)
+    # Short-lived token for the API, scoped to org admin only.
+    name="sgnl-setup-$(date +%s)"
+    token=$(fj forgejo admin user generate-access-token --username "$ADMIN_USER" \
+      --token-name "$name" --scopes write:organization --raw | tr -d '\r\n')
+    api() { curl -fsS -H "Authorization: token $token" -H 'Content-Type: application/json' "$@"; }
+    if api "$URL/api/v1/orgs/$ORG" >/dev/null 2>&1; then echo "org $ORG: exists"; else
+      api -X POST "$URL/api/v1/orgs" -d "{\"username\":\"$ORG\",\"full_name\":\"$SGNL_ORG_NAME\",\"visibility\":\"private\"}" >/dev/null
+      echo "org $ORG: created"
+    fi
+    if api "$URL/api/v1/orgs/$ORG/teams" | jq -e 'any(.[]; .name=="Developers")' >/dev/null; then
+      echo "team Developers: exists"; else
+      api -X POST "$URL/api/v1/orgs/$ORG/teams" -d '{"name":"Developers","description":"group developers (Keycloak)","permission":"write","includes_all_repositories":true,"can_create_org_repo":true,"units":["repo.code","repo.issues","repo.pulls","repo.releases","repo.wiki","repo.projects","repo.packages","repo.actions"]}' >/dev/null
+      echo "team Developers: created (write on all org repos)"
+    fi
+    unset token
+    echo "Delete the token \"$name\" in Forgejo: Settings -> Applications (the API can't delete tokens with a token)." ;;
+
+  *) sed -n '2,12p' "$0"; exit 1 ;;
+esac

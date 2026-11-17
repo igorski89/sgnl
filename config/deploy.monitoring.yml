@@ -1,0 +1,300 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Monitoring for the whole host (SGNL and cotenant): instance/docs/PLAN-monitoring.md.
+#
+#   kamal deploy -c config/deploy.monitoring.yml                 # Grafana
+#   kamal accessory boot all -c config/deploy.monitoring.yml     # first time
+#   kamal accessory reboot vmagent -c config/deploy.monitoring.yml
+#
+# The app is Grafana (monitor.sgnl, Keycloak login, image docker/grafana
+# with its provisioning and SGNL's dashboards baked in). Everything else
+# is an accessory on the kamal network, with no published port:
+#   victoriametrics  stores metrics (90 days)        sgnl-victoriametrics:8428
+#   vmagent          scrapes, writes to VM           sgnl-vmagent:8429
+#   vmalert          alert rules -> Alertmanager     sgnl-vmalert:8880
+#   alertmanager     email via SES to alerts@        sgnl-alertmanager:9093
+#   node-exporter    host CPU/RAM/disk               sgnl-node-exporter:9100
+#   cadvisor         every container                 sgnl-cadvisor:8080
+#   victorialogs     stores logs (30 days, 2 GiB cap) sgnl-victorialogs:9428
+#   vector           container + journal logs -> VL  sgnl-vector:9598
+#   vmalert-logs     log rules (LogsQL) -> AM        sgnl-vmalert-logs:8880
+# None of them has auth: they must stay off kamal-proxy and off the host's
+# ports. Only Grafana is public.
+#
+# Logs are for admins only: Grafana org "Logs" (id 2), which only the
+# group admins is mapped into; its datasources and dashboard are applied
+# by bin/sgnl-grafana-setup (docker/grafana/logs-org/). Vector removes
+# secrets and personal data before anything is stored
+# (monitoring/vector/vector.yaml.erb, tests: bin/sgnl-vector-test).
+#
+# Config files (monitoring/) are accessory `files:`: edit, then
+# `kamal accessory reboot <name>`. vmagent and vmalert also re-read their
+# files every minute, but files: are only uploaded on boot/reboot.
+#
+# cotenant owns its own rules and dashboards: /root/cotenant-monitoring/rules/*.yml
+# (vmalert, re-read every minute), /root/cotenant-monitoring/log-rules/*.yml
+# (vmalert-logs, LogsQL, re-read every minute) and
+# /root/cotenant-monitoring/dashboards/ (Grafana folder "cotenant", re-read every
+# 30 s), written from cotenant's session.
+#
+# Not backed up: metrics are disposable (docs/BACKUPS.md); Grafana's
+# dashboards and settings are in git, its DB only holds users/sessions.
+#
+# Privileged by nature: vmagent and vector read the Docker socket (service
+# discovery / logs; read-only mount, but the socket API is still full
+# access), vector reads the host's journal,
+# cAdvisor runs privileged, node-exporter sees the host's pid namespace
+# and filesystem read-only.
+service: sgnl-monitor
+image: sgnl-grafana
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-grafana
+      memory: 512m
+
+proxy:
+  ssl: true
+  host: monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 3000
+  healthcheck:
+    path: /api/health
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/grafana/Dockerfile
+  context: docker/grafana
+
+volumes:
+  - "sgnl_grafana_data:/var/lib/grafana"
+<% unless ENV.fetch("SGNL_COTENANT").empty? %>  - "/root/<%= ENV.fetch("SGNL_COTENANT") %>-monitoring/dashboards:/var/lib/grafana-dashboards/<%= ENV.fetch("SGNL_COTENANT") %>:ro"
+<% end %>
+env:
+  secret:
+    - GF_SECURITY_ADMIN_PASSWORD:GRAFANA_ADMIN_PASSWORD
+    - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET:KEYCLOAK_GRAFANA_CLIENT_SECRET
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    GF_SERVER_ROOT_URL: "https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+<% unless ENV.fetch("SGNL_COTENANT").empty? %>    SGNL_COTENANT: "<%= ENV.fetch("SGNL_COTENANT") %>"   # its dashboards folder (docker/grafana)
+<% end %>    GF_SECURITY_ADMIN_USER: "admin"
+    GF_SECURITY_COOKIE_SECURE: "true"
+    GF_USERS_ALLOW_SIGN_UP: "false"
+    GF_AUTH_BASIC_ENABLED: "false"
+    # Straight to Keycloak; the local admin login (break-glass) is at
+    # /login?disableAutoLogin=true.
+    GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "true"
+    GF_AUTH_SIGNOUT_REDIRECT_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>/protocol/openid-connect/logout?client_id=grafana&post_logout_redirect_uri=https%3A%2F%2Fmonitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>%2Flogin"
+    GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+    GF_AUTH_GENERIC_OAUTH_NAME: "SGNL"
+    GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "grafana"
+    GF_AUTH_GENERIC_OAUTH_SCOPES: "openid email profile groups"
+    GF_AUTH_GENERIC_OAUTH_AUTH_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>/protocol/openid-connect/auth"
+    GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>/protocol/openid-connect/token"
+    GF_AUTH_GENERIC_OAUTH_API_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>/protocol/openid-connect/userinfo"
+    GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+    GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+    GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: "preferred_username"
+    GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH: "email"
+    GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: "name"
+    # Who gets in is Keycloak's flow sgnl-apps (group sgnl_users); this is
+    # the same check again. Roles are re-applied at every login.
+    GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH: "groups"
+    GF_AUTH_GENERIC_OAUTH_ALLOWED_GROUPS: "sgnl_users"
+    GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(groups[*], 'admins') && 'Admin' || 'Viewer'"
+    # Org 2 = "Logs" (bin/sgnl-grafana-setup creates it; by id, because
+    # names are resolved only at startup). Only admins are in it; losing
+    # the group removes the membership at the next login (tested
+    # 2026-10-24). Until the org exists, admins just land in org 1.
+    GF_AUTH_GENERIC_OAUTH_ORG_ATTRIBUTE_PATH: "groups"
+    GF_AUTH_GENERIC_OAUTH_ORG_MAPPING: "sgnl_users:1:Viewer admins:1:Admin admins:2:Admin"
+    GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+    # /metrics would be public through kamal-proxy.
+    GF_METRICS_ENABLED: "false"
+    GF_ANALYTICS_REPORTING_ENABLED: "false"
+    GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    GF_NEWS_NEWS_FEED_ENABLED: "false"
+
+accessories:
+  victoriametrics:
+    service: sgnl-victoriametrics
+    image: victoriametrics/victoria-metrics:v1.154.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    cmd: >-
+      -storageDataPath=/storage
+      -retentionPeriod=90d
+      -search.maxUniqueTimeseries=300000
+    volumes:
+      - "sgnl_victoriametrics_data:/storage"
+    options:
+      memory: 1g
+
+  vmagent:
+    service: sgnl-vmagent
+    image: victoriametrics/vmagent:v1.154.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    cmd: >-
+      -promscrape.config=/etc/vmagent/scrape.yml
+      -promscrape.configCheckInterval=1m
+      -remoteWrite.url=http://sgnl-victoriametrics:8428/api/v1/write
+      -remoteWrite.tmpDataPath=/tmp/vmagent
+      -remoteWrite.maxDiskUsagePerURL=1GB
+    files:
+      - monitoring/vmagent/scrape.yml.erb:/etc/vmagent/scrape.yml:ro
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    options:
+      memory: 256m
+
+  vmalert:
+    service: sgnl-vmalert
+    image: victoriametrics/vmalert:v1.154.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # remoteWrite: alert state survives restarts. It takes the base URL
+    # (vmalert appends /api/v1/write itself).
+    cmd: >-
+      -datasource.url=http://sgnl-victoriametrics:8428
+      -remoteWrite.url=http://sgnl-victoriametrics:8428
+      -remoteRead.url=http://sgnl-victoriametrics:8428
+      -notifier.url=http://sgnl-alertmanager:9093
+      '-rule=/etc/vmalert/sgnl/*.yml'
+      '-rule=/etc/vmalert/<%= ENV.fetch("SGNL_COTENANT") %>/*.yml'
+      -configCheckInterval=1m
+      -evaluationInterval=30s
+      -external.url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+    files:
+      - monitoring/vmalert/rules/host.yml:/etc/vmalert/sgnl/host.yml:ro
+      - monitoring/vmalert/rules/containers.yml:/etc/vmalert/sgnl/containers.yml:ro
+      - monitoring/vmalert/rules/monitoring.yml:/etc/vmalert/sgnl/monitoring.yml:ro
+    volumes:
+      - "/root/<%= ENV.fetch("SGNL_COTENANT") %>-monitoring/rules:/etc/vmalert/<%= ENV.fetch("SGNL_COTENANT") %>:ro"
+    options:
+      memory: 128m
+
+  alertmanager:
+    service: sgnl-alertmanager
+    image: prom/alertmanager:v0.34.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # Alertmanager doesn't expand env vars in its config, so the SES
+    # credentials go from the env into /tmp at start, a tmpfs (memory, not
+    # the host's disk; monitoring/alertmanager/alertmanager.yml).
+    cmd: >-
+      -c 'set -e; umask 077; printf %s "$SMTP_PASSWORD" > /tmp/smtp_password;
+      sed "s|__SMTP_USERNAME__|$SMTP_USERNAME|" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml;
+      unset SMTP_PASSWORD SMTP_USERNAME;
+      exec /bin/alertmanager --config.file=/tmp/alertmanager.yml
+      --storage.path=/alertmanager --web.external-url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>'
+    files:
+      - monitoring/alertmanager/alertmanager.yml.erb:/etc/alertmanager/alertmanager.yml:ro
+    volumes:
+      - "sgnl_alertmanager_data:/alertmanager"
+    env:
+      secret:
+        - SMTP_PASSWORD:AWS_SES_SMTP_PASSWORD
+        - SMTP_USERNAME:AWS_SES_SMTP_USERNAME
+    options:
+      entrypoint: /bin/sh
+      tmpfs: /tmp
+      memory: 128m
+
+  node-exporter:
+    service: sgnl-node-exporter
+    image: prom/node-exporter:v1.12.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # On the kamal network (no host port, no firewall change), so network
+    # stats would be the container's own: those collectors are off;
+    # cAdvisor has per-container network.
+    cmd: >-
+      --path.rootfs=/host
+      --no-collector.netdev
+      --no-collector.netstat
+      --no-collector.netclass
+      --no-collector.sockstat
+      --no-collector.arp
+    volumes:
+      - "/:/host:ro,rslave"
+    options:
+      pid: host
+      memory: 64m
+
+  cadvisor:
+    service: sgnl-cadvisor
+    image: ghcr.io/google/cadvisor:v0.60.6
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # service/role become the metric labels container_label_service/_role.
+    cmd: >-
+      --docker_only=true
+      --housekeeping_interval=15s
+      --store_container_labels=false
+      --whitelisted_container_labels=service,role
+      --disable_metrics=percpu,sched,tcp,udp,referenced_memory,cpu_topology,resctrl,hugetlb,advtcp,process,perf_event
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:ro"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker/:/var/lib/docker:ro"
+      - "/dev/disk/:/dev/disk:ro"
+    options:
+      privileged: true
+      device: /dev/kmsg
+      memory: 256m
+
+  victorialogs:
+    service: sgnl-victorialogs
+    image: victoriametrics/victoria-logs:v1.53.0
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # Whichever comes first: 30 days, or 2 GiB on disk (oldest days are
+    # dropped; alert LogsDiskCapReached).
+    cmd: >-
+      -storageDataPath=/vlogs
+      -retentionPeriod=30d
+      -retention.maxDiskSpaceUsageBytes=2GiB
+    volumes:
+      - "sgnl_victorialogs_data:/vlogs"
+    options:
+      memory: 512m
+
+  vector:
+    service: sgnl-vector
+    image: timberio/vector:0.59.0-debian
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # -debian: it has journalctl (systemd 257, reads the host's 255 journal).
+    cmd: --config /etc/vector/vector.yaml
+    files:
+      - monitoring/vector/vector.yaml.erb:/etc/vector/vector.yaml:ro
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/var/log/journal:/var/log/journal:ro"
+      - "/etc/machine-id:/etc/machine-id:ro"
+      - "sgnl_vector_data:/var/lib/vector"
+    options:
+      memory: 256m
+
+  vmalert-logs:
+    service: sgnl-vmalert-logs
+    image: victoriametrics/vmalert:v1.154.1
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    # Same as vmalert, against VictoriaLogs: every rule is LogsQL (type
+    # vlogs). Alert state goes to VictoriaMetrics like vmalert's.
+    cmd: >-
+      -datasource.url=http://sgnl-victorialogs:9428
+      -rule.defaultRuleType=vlogs
+      -remoteWrite.url=http://sgnl-victoriametrics:8428
+      -remoteRead.url=http://sgnl-victoriametrics:8428
+      -notifier.url=http://sgnl-alertmanager:9093
+      '-rule=/etc/vmalert/sgnl/*.yml'
+      '-rule=/etc/vmalert/<%= ENV.fetch("SGNL_COTENANT") %>/*.yml'
+      -configCheckInterval=1m
+      -external.url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+    files:
+      - monitoring/vmalert-logs/rules/proxy.yml:/etc/vmalert/sgnl/proxy.yml:ro
+    volumes:
+      - "/root/<%= ENV.fetch("SGNL_COTENANT") %>-monitoring/log-rules:/etc/vmalert/<%= ENV.fetch("SGNL_COTENANT") %>:ro"
+    options:
+      memory: 128m

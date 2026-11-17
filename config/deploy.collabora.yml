@@ -1,0 +1,55 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Collabora Online (CODE): the office editor OpenCloud embeds for live
+# co-editing (office.sgnl). The browser loads the editor from here; the
+# editor fetches/saves files through OpenCloud's WOPI endpoint on drive.sgnl,
+# which is the only allowed WOPI host (aliasgroup1).
+#
+# Deviations from opencloud-compose stable-7.2, on purpose:
+#   - admin console disabled (the example keeps it with admin/admin);
+#   - no SYS_ADMIN / seccomp=unconfined / apparmor=unconfined at first:
+#     the host is shared with cotenant and this parses untrusted documents.
+#     Without them Collabora can't bind-mount its per-document jails and
+#     copies them instead (slower document opening). Add only if needed.
+#   - TLS terminated by kamal-proxy (ssl.enable=false, termination=true).
+service: sgnl-collabora
+image: sgnl-collabora
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-collabora
+
+proxy:
+  ssl: true
+  host: office.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 9980
+  healthcheck:
+    path: /hosting/discovery
+    timeout: 10
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/collabora/Dockerfile
+  context: docker/collabora
+
+# WOPI proof key (unique per install), generated on the host by
+# .kamal/hooks/pre-app-boot on the first boot.
+volumes:
+  - "/opt/sgnl/collabora/proof_key:/etc/coolwsd/proof_key:ro"
+
+env:
+  clear:
+    aliasgroup1: "https://drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>:443"
+    extra_params: >-
+      --o:ssl.enable=false
+      --o:ssl.termination=true
+      --o:welcome.enable=false
+      --o:admin_console.enable=false
+      --o:net.frame_ancestors=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+      --o:net.lok_allow.host[14]=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+      --o:home_mode.enable=false

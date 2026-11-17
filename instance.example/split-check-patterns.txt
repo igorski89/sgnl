@@ -1,0 +1,3 @@
+# Extra patterns for bin/sgnl-split-check (PCRE, case-insensitive), on
+# top of every value in sgnl.env: names of people, account IDs and the
+# like that must never appear outside instance/. One per line.

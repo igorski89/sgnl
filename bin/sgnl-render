@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Prints a static config file with its {{SGNL_*}} placeholders filled
+from the instance values (lib/instance.py).
+
+  bin/sgnl-render opencloud/csp.yaml
+  bin/sgnl-render --get SGNL_HOST        # one value
+"""
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import instance
+
+if len(sys.argv) == 3 and sys.argv[1] == "--get":
+    sys.stdout.write(instance.get(sys.argv[2]))
+elif len(sys.argv) == 2:
+    sys.stdout.write(instance.render(open(sys.argv[1]).read()))
+else:
+    sys.exit(__doc__)

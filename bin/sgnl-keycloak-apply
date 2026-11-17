@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+# Renders keycloak/realm.yaml (fills {{VARS}} from .kamal/secrets) and
+# applies it with keycloak-config-cli, run as a throwaway container on the
+# server's kamal network (Keycloak's admin API isn't exposed elsewhere
+# for this). Secrets only travel over ssh stdin and live in the
+# container's memory (tmpfs) - never on argv or on disk.
+#
+#   bin/sgnl-keycloak-apply                 # keycloak/realm.yaml
+#   bin/sgnl-keycloak-apply path/to/realm.yaml
+#   bin/sgnl-keycloak-apply --render [realm]   # print the rendered realm, apply nothing
+cd "$(dirname "$0")/.."
+
+HOST=root@$SGNL_HOST
+# keycloak-config-cli is built per Keycloak version and lags behind it;
+# 6.5.1-26.5.5 is the newest (2026-05) and works against 26.7 (trial).
+CLI_IMAGE=adorsys/keycloak-config-cli:6.5.1-26.5.5
+render=
+[[ ${1:-} == --render ]] && { render=1; shift; }
+realm=${1:-keycloak/realm.yaml}
+
+source lib/instance.sh   # {{SGNL_*}} values (exported)
+set -a
+# shellcheck disable=SC1091
+source "${SECRETS_FILE:-.kamal/secrets}"
+set +a
+
+# Render first (in memory), so a missing secret stops before anything runs.
+rendered=$(python3 -I - "$realm" <<'PY'
+import json, os, re, sys
+
+def fill(match):
+    name = match.group(1)
+    if not os.environ.get(name):
+        sys.exit(f"sgnl-keycloak-apply: {name} is not set (see .kamal/secrets)")
+    # Placeholders sit inside double-quoted YAML strings: JSON escaping fits.
+    return json.dumps(os.environ[name])[1:-1]
+
+# Comment lines are left alone (they mention {{VARS}} themselves).
+sys.stdout.write("".join(
+    line if line.lstrip().startswith("#") else re.sub(r"\{\{([A-Z0-9_]+)\}\}", fill, line)
+    for line in open(sys.argv[1])))
+PY
+)
+
+[[ -n $render ]] && { printf '%s\n' "$rendered"; exit 0; }
+
+# First line: the admin password; the rest: the rendered realm file.
+printf '%s\n%s\n' "$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD" "$rendered" | ssh "$HOST" "docker run --rm -i --network kamal --tmpfs /config:mode=1777 \
+    -e KEYCLOAK_URL=http://sgnl-keycloak:8080 -e KEYCLOAK_USER=admin \
+    -e KEYCLOAK_AVAILABILITYCHECK_ENABLED=true -e KEYCLOAK_AVAILABILITYCHECK_TIMEOUT=60s \
+    -e IMPORT_FILES_LOCATIONS=/config/realm.yaml \
+    -e IMPORT_MANAGED_CLIENT=full -e IMPORT_MANAGED_GROUP=full \
+    -e IMPORT_MANAGED_AUTHENTICATIONFLOW=full \
+    --entrypoint sh $CLI_IMAGE -c '
+      read -r KEYCLOAK_PASSWORD; export KEYCLOAK_PASSWORD
+      cat > /config/realm.yaml
+      exec java \$JAVA_OPTS -jar /app/keycloak-config-cli.jar'"
+
+# keycloak-config-cli (built for 26.5) sets webAuthnPolicyPasswordlessPasskeysEnabled
+# in its first realm update, then puts it back to Keycloak's default (true)
+# in its later full-realm updates (admin events, 2026-10-24). With it on,
+# the login page offers passkeys on the username screen, where our
+# second-factor passkeys fail ("Unknown user authenticated by the
+# Passkey"). Set it again directly, from the file's value.
+realm_name=$(printf '%s\n' "$rendered" | sed -n 's/^realm: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p')
+passkeys=$(printf '%s\n' "$rendered" | sed -En 's/^webAuthnPolicyPasswordlessPasskeysEnabled: *(true|false) *$/\1/p')
+if [[ -n $realm_name && -n $passkeys ]]; then
+  bin/sgnl-kcadm update "realms/$realm_name" -s "webAuthnPolicyPasswordlessPasskeysEnabled=$passkeys"
+  echo "realm $realm_name: webAuthnPolicyPasswordlessPasskeysEnabled=$passkeys"
+fi

@@ -1,0 +1,148 @@
+# SGNL landing page (home.sgnl.example.com), Dashy 4.7.
+# Tiles are hints, not access control: every app enforces its own access
+# through its own login. Dashy logs in via Keycloak (client "dashy" in
+# keycloak/realm.yaml, flow sgnl-apps: needs sgnl_users); showForGroups
+# uses the groups claim (client scope "groups", in the id_token). Editing
+# in the UI is disabled: this file in git is the source of truth
+# (uploaded by .kamal/hooks/pre-app-boot, mounted ro).
+pageInfo:
+  title: Secrétariat Général
+  description: Example Org workspace
+  navLinks: []
+  footerText: "Example Org · Secrétariat Général"
+
+appConfig:
+  theme: default
+  layout: auto
+  iconSize: large
+  language: en
+  statusCheck: true
+  statusCheckInterval: 300
+  disableConfiguration: true
+  preventWriteToDisk: true
+  allowConfigEdit: false
+  disableUpdateChecks: true
+  enableServiceWorker: false
+  hideComponents:
+    hideSettings: true
+    hideFooter: false
+  webSearch:
+    disableWebSearch: true
+  auth:
+    enableOidc: true
+    oidc:
+      clientId: dashy
+      endpoint: https://id.sgnl.example.com/realms/example
+      adminGroup: admins
+      scope: openid profile email groups
+
+sections:
+  - name: Apps
+    icon: fas fa-th-large
+    displayData:
+      cols: 2
+    items:
+      - title: Mail
+        description: Webmail (alice@ and shared mailboxes like admin@)
+        url: https://inbox.sgnl.example.com
+        icon: fas fa-envelope
+        statusCheckUrl: https://inbox.sgnl.example.com/api/health
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: Files
+        description: OpenCloud, live editing with Collabora
+        url: https://drive.sgnl.example.com
+        icon: fas fa-folder-open
+        statusCheckUrl: https://drive.sgnl.example.com/status.php
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: Passwords
+        description: Vaultwarden (Bitwarden apps)
+        url: https://vault.sgnl.example.com
+        icon: fas fa-key
+        statusCheckUrl: https://vault.sgnl.example.com/alive
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: Git
+        description: Forgejo, org example
+        url: https://git.sgnl.example.com
+        icon: fas fa-code-branch
+        statusCheckUrl: https://git.sgnl.example.com/api/healthz
+        displayData:
+          showForGroups: [forgejo_users]
+      - title: Monitoring
+        description: Grafana, host + containers
+        url: https://monitor.sgnl.example.com
+        icon: fas fa-chart-line
+        statusCheckUrl: https://monitor.sgnl.example.com/api/health
+        displayData:
+          showForGroups: [sgnl_users]
+
+  - name: Account & security
+    icon: fas fa-user-shield
+    items:
+      - title: Password, passkeys, sessions
+        description: Your SGNL account (Keycloak)
+        url: https://id.sgnl.example.com/realms/example/account
+        icon: fas fa-fingerprint
+      - title: Mail app passwords
+        description: One per device for iOS/macOS Mail, Thunderbird
+        url: https://mail.sgnl.example.com/account
+        icon: fas fa-mobile-alt
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: Git access tokens
+        description: For git over HTTPS (use as the password)
+        url: https://git.sgnl.example.com/user/settings/applications
+        icon: fas fa-terminal
+        displayData:
+          showForGroups: [forgejo_users]
+
+  - name: Getting started
+    icon: fas fa-rocket
+    items:
+      - title: "Mail apps: IMAP 993 / SMTP 465"
+        description: "Server mail.sgnl.example.com, user = your email, password = an app password"
+        url: https://mail.sgnl.example.com/account
+        icon: fas fa-inbox
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: "Bitwarden apps & extensions"
+        description: "Self-hosted, server https://vault.sgnl.example.com, then single sign-on"
+        url: https://bitwarden.com/download/
+        icon: fas fa-download
+        displayData:
+          showForGroups: [sgnl_users]
+      - title: "OpenCloud apps"
+        description: "iOS / Android / desktop, server https://drive.sgnl.example.com"
+        url: https://opencloud.eu/en/download
+        icon: fas fa-cloud-download-alt
+        displayData:
+          showForGroups: [sgnl_users]
+
+  - name: Admin
+    icon: fas fa-tools
+    displayData:
+      showForGroups: [admins]
+    items:
+      - title: Stalwart admin
+        description: Mail server
+        url: https://mail.sgnl.example.com/admin
+        icon: fas fa-server
+        statusCheckUrl: https://mail.sgnl.example.com/healthz/live
+      - title: Forgejo site admin
+        url: https://git.sgnl.example.com/-/admin
+        icon: fas fa-cogs
+      - title: OpenCloud admin
+        url: https://drive.sgnl.example.com/admin-settings
+        icon: fas fa-sliders-h
+      - title: Collabora (office.sgnl)
+        description: Document server, no UI
+        url: https://office.sgnl.example.com/hosting/discovery
+        icon: fas fa-file-word
+        statusCheckUrl: https://office.sgnl.example.com/hosting/discovery
+      - title: Keycloak admin
+        description: "Break-glass admin console (master realm)"
+        url: https://id.sgnl.example.com/admin/master/console/#/example
+        icon: fas fa-key
+        statusCheckUrl: https://id.sgnl.example.com/realms/example

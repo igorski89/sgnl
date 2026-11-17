@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Restore drill: restores the latest backup on the host into a scratch
+# dir, boots a throwaway Stalwart on it (internal Docker network: no
+# internet, no published ports), and lists every mailbox with its message
+# count via JMAP as the recovery admin. Compare with what you see in
+# webmail. Cleans up after itself. See docs/BACKUPS.md.
+#
+#   bin/sgnl-backup-restore-test [account]   # default alice@example.com
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+HOST=root@$SGNL_HOST
+ACCOUNT=${1:-$SGNL_ADMIN_USER@$SGNL_DOMAIN}
+ADMIN=$("$(dirname "$0")/sgnl-secret" stalwart-recovery-admin)
+
+# The admin credential goes over stdin (first line), never on a command
+# line; the rest of stdin is the remote script.
+{ printf '%s\n' "$ADMIN"; cat <<'REMOTE'
+set -euo pipefail
+B=/opt/sgnl/backup
+T=$B/restore-test
+NAME=sgnl-restore-test
+cleanup() {
+  docker rm -f $NAME $NAME-curl >/dev/null 2>&1 || true
+  docker network rm $NAME >/dev/null 2>&1 || true
+  rm -rf "$T"
+}
+trap cleanup EXIT
+cleanup
+
+echo "==> restoring latest snapshot"
+docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
+  restic/restic:0.18.0 restore latest --host sgnl --target /restore/restore-test --include /staging/sgnl_stalwart_data -q
+chown -R 2000:2000 "$T/staging/sgnl_stalwart_data"
+du -sh "$T/staging/sgnl_stalwart_data"
+
+echo "==> booting a throwaway Stalwart on it (no internet, no ports)"
+docker network create --internal $NAME >/dev/null
+IMAGE=$(docker inspect --format '{{.Config.Image}}' "$(docker ps -qf label=service=sgnl-stalwart | head -1)")
+printf 'STALWART_RECOVERY_ADMIN=%s\n' "$ADMIN" > "$T/env"
+docker run -d --name $NAME --network $NAME --env-file "$T/env" \
+  -e STALWART_PUBLIC_URL=https://mail.$SGNL_APPS_DOMAIN \
+  -v "$T/staging/sgnl_stalwart_data:/var/lib/stalwart" \
+  -v /opt/sgnl/stalwart/config.json:/etc/stalwart/config.json:ro \
+  "$IMAGE" >/dev/null
+rm -f "$T/env"
+
+USER_PASS="$ACCOUNT%${ADMIN%%:*}:${ADMIN#*:}"
+curl_() { docker run --rm --name $NAME-curl --network $NAME curlimages/curl:8.10.1 -sS -u "$USER_PASS" "$@"; }
+
+for i in $(seq 1 30); do
+  curl_ -o /dev/null -f http://$NAME:8080/healthz/ready 2>/dev/null && break
+  sleep 2
+done
+
+ACC=$(curl_ http://$NAME:8080/jmap/session | sed -n 's/.*"primaryAccounts":{[^}]*"urn:ietf:params:jmap:mail":"\([^"]*\)".*/\1/p')
+[[ -n $ACC ]] || { echo "could not log in to the restored Stalwart"; docker logs --tail 30 $NAME; exit 1; }
+
+echo "==> mailboxes of $ACCOUNT in the restored copy"
+curl_ -H 'Content-Type: application/json' http://$NAME:8080/jmap/ -d '{
+  "using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],
+  "methodCalls":[["Mailbox/get",{"accountId":"'"$ACC"'","properties":["name","totalEmails"]},"0"]]}' |
+  tr '{' '\n' | sed -n 's/.*"name":"\([^"]*\)".*"totalEmails":\([0-9]*\).*/  \1: \2/p; s/.*"totalEmails":\([0-9]*\).*"name":"\([^"]*\)".*/  \2: \1/p'
+echo; echo "==> restore test OK (scratch copy removed)"
+REMOTE
+} | ssh "$HOST" "export ACCOUNT='$ACCOUNT' SGNL_APPS_DOMAIN='$SGNL_APPS_DOMAIN'; read -r ADMIN; export ADMIN; exec bash -s"

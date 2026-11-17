@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Export the live SGNL Keychain secrets as a CSV for Apple Passwords
+(File -> Import Passwords...), the break-glass copy kept outside SGNL
+(instance/docs/PLAN-recovery.md, step C).
+
+  bin/sgnl-breakglass-export <out.csv>
+  bin/sgnl-breakglass-export -          # to stdout (bin/sgnl-bootstrap-push)
+
+Username = the Keychain service name, so a new laptop's Keychain can be
+rebuilt from Passwords. Values are never printed. The file is created
+0600 and must not exist yet; delete it right after the import:
+  rm -P <out.csv>
+
+Fails if the Keychain has a example-sgnl-* item not listed below
+(LIVE or DEAD), so a new secret can't be silently left out. Re-run and
+re-import after adding or rotating a secret.
+"""
+import csv, json, os, subprocess, sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import instance  # noqa: E402  (instance/sgnl.env)
+I = instance.load()
+PREFIX = I["SGNL_PREFIX"] + "-"
+S = I["SGNL_APPS_DOMAIN"]
+BUCKET = I["SGNL_BACKUP_BUCKET"]
+
+# key: (title, url, notes)
+LIVE = {
+    "restic-password":                 ("SGNL backups: restic password", f"https://{S}", "MOST IMPORTANT. Decrypts the nightly backups in Cloudflare R2 (bucket " + BUCKET + "). Without it no restore. docs/BACKUPS.md"),
+    "backup-s3-access-key-id":         ("SGNL backups: R2 access key ID", f"https://{S}", "R2 token, read+write on " + BUCKET + " only. Can be recreated in Cloudflare."),
+    "backup-s3-secret-access-key":     ("SGNL backups: R2 secret key", f"https://{S}", "R2 token, read+write on " + BUCKET + " only. Can be recreated in Cloudflare."),
+    "cloudflare-api-token":            ("SGNL Cloudflare API token", "https://dash.cloudflare.com", "DNS for kamal-proxy / Stalwart DNS-01. Can be recreated in Cloudflare."),
+    "aws-access-key-id":               ("SGNL AWS access key ID", "https://console.aws.amazon.com", "Scoped IAM key for Terraform (aws/). Can be recreated as AWS root."),
+    "aws-secret-access-key":           ("SGNL AWS secret key", "https://console.aws.amazon.com", "Scoped IAM key for Terraform (aws/). Can be recreated as AWS root."),
+    "ses-smtp-username":               ("SGNL SES SMTP username", "https://email-smtp.eu-central-1.amazonaws.com", "Outgoing mail for all SGNL apps and backup alerts."),
+    "ses-smtp-password":               ("SGNL SES SMTP password", "https://email-smtp.eu-central-1.amazonaws.com", "Outgoing mail for all SGNL apps and backup alerts."),
+    "ses-relay-app-password":          ("SGNL Stalwart relay app password", f"https://mail.{S}", "SES inbound forwarder -> Stalwart. bin/stalwart-relay-app-password"),
+    "stalwart-recovery-admin":         ("SGNL Stalwart recovery admin", f"https://mail.{S}", "Form admin:password. Mail server break-glass admin."),
+    "keycloak-bootstrap-admin-password": ("SGNL Keycloak master admin", f"https://id.{S}", "Keycloak master realm admin (bin/sgnl-kcadm). Break-glass for all logins."),
+    "keycloak-postgres-password":      ("SGNL Keycloak Postgres", f"https://id.{S}", "Keycloak database password."),
+    "keycloak-sgnl-agent-client-secret": ("SGNL Keycloak agent client", f"https://id.{S}", "Client used by bin/sgnl-kc."),
+    "keycloak-forgejo-client-secret":  ("SGNL Keycloak client: Forgejo", f"https://git.{S}", "OIDC client secret."),
+    "keycloak-grafana-client-secret":  ("SGNL Keycloak client: Grafana", f"https://monitor.{S}", "OIDC client secret."),
+    "keycloak-vaultwarden-client-secret": ("SGNL Keycloak client: Vaultwarden", f"https://vault.{S}", "OIDC client secret."),
+    "keycloak-bulwark-client-secret":  ("SGNL Keycloak client: Bulwark", f"https://inbox.{S}", "OIDC client secret."),
+    "opencloud-admin-password":        ("SGNL OpenCloud local admin", f"https://drive.{S}", "CLI/API break-glass only (no login form)."),
+    "grafana-admin-password":          ("SGNL Grafana admin", f"https://monitor.{S}", "Local Grafana admin."),
+    "forgejo-admin-token":             ("SGNL Forgejo admin API token", f"https://git.{S}", "Used by bin/sgnl-user-suspend."),
+    "forgejo-secret-key":              ("SGNL Forgejo SECRET_KEY", f"https://git.{S}", "Encrypts data in Forgejo's DB; needed to restore it."),
+    "forgejo-internal-token":          ("SGNL Forgejo INTERNAL_TOKEN", f"https://git.{S}", "Forgejo internal token."),
+    "forgejo-lfs-jwt-secret":          ("SGNL Forgejo LFS JWT secret", f"https://git.{S}", "Forgejo LFS."),
+    "forgejo-oauth2-jwt-secret":       ("SGNL Forgejo OAuth2 JWT secret", f"https://git.{S}", "Forgejo OAuth2."),
+    "bulwark-admin-password":          ("SGNL Bulwark admin", f"https://inbox.{S}", "Webmail admin."),
+    "bulwark-session-secret":          ("SGNL Bulwark session secret", f"https://inbox.{S}", "Webmail sessions."),
+}
+# Left in the Keychain but no longer used (removed apps / Authelia-era clients).
+DEAD = {
+    "authelia-jwt-secret", "authelia-session-secret", "authelia-storage-encryption-key",
+    "lldap-admin-password", "lldap-authelia-password", "lldap-jwt-secret", "lldap-key-seed",
+    "nextcloud-admin-password", "nextcloud-oidc-client-secret", "nextcloud-postgres-password",
+    "onlyoffice-jwt-secret",
+    "forgejo-oidc-client-secret", "vaultwarden-oidc-client-secret", "bulwark-oidc-client-secret",
+}
+
+
+def store_items():
+    # Everything bin/sgnl-secret's store holds, in one lookup.
+    r = subprocess.run([os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgnl-secret"), "--json"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(r.stderr.strip())
+    return {k[len(PREFIX):]: v for k, v in json.loads(r.stdout).items()}
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    path = sys.argv[1]
+
+    values = store_items()
+    found = set(values)
+    unknown = found - set(LIVE) - DEAD
+    if unknown:
+        sys.exit("not listed in LIVE or DEAD, add them first: " + ", ".join(sorted(unknown)))
+    missing = set(LIVE) - found
+    if missing:
+        sys.exit("listed in LIVE but not in the secret store: " + ", ".join(sorted(missing)))
+
+    if path == "-":
+        f = sys.stdout
+    else:
+        f = os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", newline="")
+    with f:
+        w = csv.writer(f)
+        w.writerow(["Title", "URL", "Username", "Password", "Notes", "OTPAuth"])
+        for key, (title, url, notes) in LIVE.items():
+            w.writerow([title, url, PREFIX + key, values[key], notes, ""])
+
+    print(f"{len(LIVE)} live items written to {path} "
+          f"({len(found)} in the store, {len(DEAD & found)} dead skipped)", file=sys.stderr)
+
+
+main()

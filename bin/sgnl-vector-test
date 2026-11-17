@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Vector unit tests: renders monitoring/vector/vector.yaml.erb the way
+# Kamal does (instance values, instance includes) and runs the generic
+# tests plus the instance's own (instance/monitoring/vector-tests.yaml).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source lib/instance.sh
+image=$(sed -n 's/^ *image: *\(timberio\/vector:[^ ]*\).*/\1/p' config/deploy.monitoring.yml | head -1)
+t=$(mktemp -d); trap 'rm -rf "${t:?}"' EXIT
+ruby -rerb -e 'print ERB.new(File.read(ARGV[0])).result' monitoring/vector/vector.yaml.erb > "$t/vector.yaml"
+cp monitoring/vector/tests.yaml "$t/tests.yaml"
+inst=$SGNL_INSTANCE_DIR/monitoring/vector-tests.yaml
+[[ -f $inst ]] && grep -v '^#' "$inst" >> "$t/tests.yaml"
+docker run --rm -v "$t:/v:ro" "$image" test /v/vector.yaml /v/tests.yaml

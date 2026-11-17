@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Renders stalwart/plan*.ndjson (strips # comments, fills {{VARS}} from
+# .kamal/secrets) and applies it with stalwart-cli. Secrets only ever
+# exist in this process's environment and stalwart-cli's stdin - never
+# in a rendered file on disk.
+#
+#   bin/stalwart-apply                      # stalwart/plan.ndjson
+#   bin/stalwart-apply stalwart/plan-oidc.ndjson
+#   bin/stalwart-apply --dry-run            # validate only
+#   bin/stalwart-apply --render             # print the rendered plan, apply nothing
+#
+# Needs stalwart-cli >= 1.0.13 on PATH (brew install
+# stalwartlabs/tap/stalwart-cli, or the release tarball).
+cd "$(dirname "$0")/.."
+
+plan=stalwart/plan.ndjson
+args=() render=
+for a in "$@"; do
+  case "$a" in
+    --render) render=1 ;;
+    -*) args+=("$a") ;;
+    *) plan="$a" ;;
+  esac
+done
+
+[[ -n $render ]] || command -v stalwart-cli >/dev/null || { echo "stalwart-cli not on PATH" >&2; exit 1; }
+
+source lib/instance.sh   # {{SGNL_*}} values (exported)
+set -a
+# shellcheck disable=SC1091
+source "${SECRETS_FILE:-.kamal/secrets}"
+set +a
+
+export ACME_DIRECTORY="${ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}"
+export STALWART_URL="${STALWART_URL:-https://mail.$SGNL_APPS_DOMAIN}"
+export STALWART_USER="${STALWART_RECOVERY_ADMIN%%:*}"
+export STALWART_PASSWORD="${STALWART_RECOVERY_ADMIN#*:}"
+
+if [[ -n $render ]]; then apply() { cat; }; else apply() { stalwart-cli apply --stdin ${args[@]+"${args[@]}"}; }; fi
+python3 -I - "$plan" <<'PY' | apply
+import json, os, re, sys
+
+def fill(match):
+    name = match.group(1)
+    if name not in os.environ or not os.environ[name]:
+        sys.exit(f"stalwart-apply: {name} is not set (see .kamal/secrets)")
+    # Placeholders sit inside JSON strings: escape, drop the outer quotes.
+    return json.dumps(os.environ[name])[1:-1]
+
+# Render and validate everything before writing anything, so a bad line
+# can't leave stalwart-cli applying a partial plan.
+out = []
+def read(path):
+    for line in open(path):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        # "@include <file>": that file's lines here (the instance's mailboxes).
+        if line.startswith("@include "):
+            read(re.sub(r"\{\{([A-Z0-9_]+)\}\}", fill, line.split(None, 1)[1].strip()))
+            continue
+        line = re.sub(r"\{\{([A-Z0-9_]+)\}\}", fill, line)
+        json.loads(line)
+        out.append(line)
+read(sys.argv[1])
+sys.stdout.write("".join(out))
+PY

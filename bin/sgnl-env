@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Runs a command with every SGNL secret fetched once (one Vaultwarden
+lookup instead of one per secret) and passed in its environment as
+SGNL_SECRET_<NAME>; bin/sgnl-secret reads them from there first.
+
+  bin/sgnl-env kamal deploy -c config/deploy.forgejo.yml
+  bin/sgnl-env bin/stalwart-apply
+
+Values never appear on a command line. Store: SGNL_SECRETS (see
+bin/sgnl-secret).
+"""
+import os, sys
+
+import importlib.machinery, importlib.util
+
+_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgnl-secret")
+_spec = importlib.util.spec_from_loader("sgnl_secret", importlib.machinery.SourceFileLoader("sgnl_secret", _path))
+s = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(s)
+
+if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+    sys.exit(__doc__)
+env = dict(os.environ)
+for name, value in s.load().items():
+    env[s.env_name(name)] = value
+os.execvpe(sys.argv[1], sys.argv[1:], env)

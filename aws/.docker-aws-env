@@ -1,0 +1,20 @@
+# Sourced by ./tf and ./awscli. Puts the example-sgnl-terraform IAM key into the
+# environment from bin/sgnl-secret (Vaultwarden items
+# example-sgnl-aws-access-key-id / -secret-access-key), so it never
+# exists as a file (no ~/.aws, nothing in the project).
+
+keychain() {
+  "$(git rev-parse --show-toplevel)/bin/sgnl-secret" "$1" || exit 1
+}
+
+AWS_ACCESS_KEY_ID=$(keychain aws-access-key-id)
+AWS_SECRET_ACCESS_KEY=$(keychain aws-secret-access-key)
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
+# `docker -e NAME` (no value) copies NAME from this environment, so the
+# secret never appears on the docker command line / in `ps`.
+DOCKER_AWS_ENV=(-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY)
+
+# -t only when both ends are a terminal: a TTY turns \n into \r\n, which
+# corrupts captured output like "$(./tf output -raw relay_secret_arn)".
+if [[ -t 0 && -t 1 ]]; then DOCKER_TTY=(-it); else DOCKER_TTY=(-i); fi

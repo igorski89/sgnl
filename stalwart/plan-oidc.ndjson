@@ -1,0 +1,41 @@
+# Stalwart <- Keycloak (OIDC; Authelia until 2026-10-19). Apply with
+#   bin/stalwart-apply stalwart/plan-oidc.ndjson
+# after Keycloak's realm is reachable at
+# https://id.sgnl.example.com/realms/example, and after
+# stalwart/plan.ndjson (it references the domain). Then restart Stalwart.
+#
+# What this does: Keycloak becomes Stalwart's directory for the whole
+# server (Authentication.directoryId). The web UI (/account, /admin) and
+# Bulwark log in through Keycloak, and Stalwart accepts Keycloak's tokens.
+# The directory keeps the description "authelia": it's what matchOn and
+# Authentication.directoryId ("#authelia") refer to; accounts are found
+# by preferred_username, not by issuer.
+#
+# Why global, not per domain: Domain.directoryId is Enterprise-only. The
+# community edition accepts it and ignores it (verified 2026-10-08 on
+# 0.16.25: /api/discover kept returning Stalwart's own login):
+# https://support.stalw.art/t/trying-to-assign-oidc-provider-to-domain/1079
+#
+# What changes with a global external directory (tested 2026-10-08):
+# - Plain account passwords are never checked (SMTP AUTH -> 454) and the
+#   plan can no longer set them. The ses-relay account therefore uses an
+#   app password (bin/stalwart-relay-app-password), and so do native mail
+#   clients (create them at /account).
+# - App passwords are checked against Stalwart's own store first. They
+#   kept working with the IdP (then Authelia) stopped, including after
+#   restarting Stalwart while it was down. Stalwart then needs ~30 s longer to
+#   start (it retries OIDC discovery). So inbound mail and native clients
+#   don't depend on Keycloak. Web UI / Bulwark logins do.
+# - The recovery admin (STALWART_RECOVERY_ADMIN) keeps working, and is
+#   how bin/stalwart-relay-app-password impersonates the relay account.
+#
+# Accounts must already exist (stalwart/plan.ndjson): an OIDC directory
+# can't resolve recipients for people who have never logged in.
+
+{"@type":"upsert","object":"Directory","matchOn":["description"],"value":{"authelia":{"@type":"Oidc","description":"authelia","issuerUrl":"https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}","claimUsername":"preferred_username","usernameDomain":"{{SGNL_DOMAIN}}","claimName":"name"}}}
+{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","directoryId":null}}}
+{"@type":"update","object":"Authentication","value":{"directoryId":"#authelia"}}
+# Stalwart web UI (/account, /admin) logs in through Keycloak as public
+# PKCE client "stalwart-webui" (keycloak/realm.yaml).
+# /account is where people create per-device app passwords for 465/993.
+{"@type":"upsert","object":"Application","matchOn":["description"],"value":{"webui":{"description":"Stalwart Web Interface","oauthClientId":"stalwart-webui"}}}

@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Pushes the bootstrap bundle (what's only on this laptop) into the SGNL
+restic backups, as its own snapshot (host "bootstrap", tag "bootstrap"):
+
+  sgnl-bootstrap/repo.bundle       the SGNL repo (git bundle --all)
+  sgnl-bootstrap/instance.bundle   the instance repo in instance/, once it
+                                   is its own repo (git bundle --all)
+  sgnl-bootstrap/secrets.csv       the 26 live Keychain secrets (bin/sgnl-breakglass-export)
+  sgnl-bootstrap/aws/terraform.tfstate, terraform.tfvars   (git-ignored)
+  sgnl-bootstrap/MANIFEST.txt      commit, date, what's inside
+
+Built in memory and streamed into restic (--stdin): nothing unencrypted
+on disk. Opened with the restic password:
+
+  restic dump --host bootstrap latest /sgnl-bootstrap.tar | tar -x
+
+Runs after every commit (.githooks/post-commit, in the background), and
+by hand after changing a secret that no commit touched:
+
+  bin/sgnl-bootstrap-push
+
+Keeps its own history: the last 30 bundles, one a day for 90 days, one a
+month for a year (forget --host bootstrap; the nightly server job only
+forgets --host sgnl). The server's monthly prune frees the space.
+"""
+import datetime, io, os, subprocess, sys, tarfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402  (instance/sgnl.env)
+I = instance.load()
+REPO = f"s3:https://{I['SGNL_R2_ENDPOINT']}/{I['SGNL_BACKUP_BUCKET']}"
+IMAGE = "restic/restic:0.18.0"
+
+
+def run(cmd, **kw):
+    kw.setdefault("stderr", subprocess.PIPE)
+    return subprocess.run(cmd, cwd=ROOT, check=True, stdout=subprocess.PIPE, **kw).stdout
+
+
+def kc(key):
+    return run(["bin/sgnl-secret", key], text=True)
+
+
+def main():
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    # The SGNL repo, and the instance repo inside it (instance/.git) if
+    # it is its own repo.
+    repos = {"repo": ROOT}
+    inst = os.path.join(ROOT, "instance")
+    if os.path.exists(os.path.join(inst, ".git")):
+        repos["instance"] = inst
+    files, commits, dirty = {}, [], False
+    for name, path in repos.items():
+        git = ["git", "-C", path]
+        commit = run(git + ["rev-parse", "HEAD"], text=True).strip()
+        dirty = dirty or bool(run(git + ["status", "--porcelain"], text=True).strip())
+        files[f"{name}.bundle"] = run(git + ["bundle", "create", "-", "--all"], stderr=subprocess.DEVNULL)
+        commits.append(f"{name}: {commit}")
+    files["secrets.csv"] = run(["bin/sgnl-breakglass-export", "-"])
+    for p in ["aws/terraform.tfstate", "aws/terraform.tfvars"]:
+        with open(os.path.join(ROOT, p), "rb") as f:
+            files[p] = f.read()
+    files["MANIFEST.txt"] = (
+        f"SGNL bootstrap bundle\ncreated: {now.isoformat()}\n"
+        + "".join(f"commit {c}\n" for c in commits)
+        + f"uncommitted changes when pushed: {'yes' if dirty else 'no'}\n"
+        "files: repo.bundle (git clone repo.bundle sgnl), instance.bundle if present "
+        "(git clone instance.bundle sgnl/instance), secrets.csv (secrets export; "
+        "Username = item name), aws/terraform.tfstate, aws/terraform.tfvars\n"
+        "next: docs/RECOVERY.md in the repo\n").encode()
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo("sgnl-bootstrap/" + name)
+            info.size, info.mtime, info.mode = len(data), int(now.timestamp()), 0o600
+            tar.addfile(info, io.BytesIO(data))
+
+    env = dict(os.environ, RESTIC_REPOSITORY=REPO, RESTIC_PASSWORD=kc("restic-password"),
+               AWS_ACCESS_KEY_ID=kc("backup-s3-access-key-id"),
+               AWS_SECRET_ACCESS_KEY=kc("backup-s3-secret-access-key"))
+    restic = ["docker", "run", "--rm", "-i", "-e", "RESTIC_REPOSITORY", "-e", "RESTIC_PASSWORD",
+              "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", IMAGE]
+
+    subprocess.run(restic + ["backup", "--stdin", "--stdin-filename", "sgnl-bootstrap.tar",
+                             "--host", "bootstrap", "--tag", "bootstrap", "--quiet"],
+                   input=buf.getvalue(), env=env, check=True)
+    subprocess.run(restic + ["forget", "--host", "bootstrap", "--keep-last", "30",
+                             "--keep-daily", "90", "--keep-monthly", "12", "--quiet"],
+                   env=env, check=False)
+    short = ", ".join(c.split(": ")[0] + " " + c.split(": ")[1][:7] for c in commits)
+    print(f"bootstrap bundle pushed: {short}, {len(buf.getvalue()) // 1024} KiB")
+
+
+try:
+    main()
+except subprocess.CalledProcessError as e:
+    err = (e.stderr or b"").decode(errors="replace").strip()[-300:] if isinstance(e.stderr, bytes) else str(e.stderr or "")
+    sys.exit(f"bootstrap push failed: {' '.join(e.cmd[:3])}... {err}")

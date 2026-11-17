@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Restore drill for OpenCloud: restores the latest backup's two OpenCloud
+# volumes (config + data) on the host into a scratch dir and checks:
+#   - opencloud.yaml (generated secrets) is in the backup;
+#   - every user file's SHA-256 against the live volume (OpenCloud's posix
+#     storage keeps files as plain files, so this is a direct comparison;
+#     files changed since the snapshot show up as differences);
+#   - a throwaway OpenCloud boots on the restored data (internal network:
+#     no internet, no published ports) and answers /status.php;
+#   - its API lists the same users as live;
+#   - for one account, OpenCloud itself lists the files (WebDAV) and
+#     serves one, whose SHA-256 matches the file on disk (metadata and
+#     content both intact). Uses 5-minute app tokens made by the CLI inside
+#     the throwaway instance; nothing touches the live one except reads.
+# Cleans up after itself. See docs/BACKUPS.md.
+#
+#   bin/sgnl-backup-restore-test-opencloud [account] [snapshot]   # default: alice latest
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+HOST=root@$SGNL_HOST
+ACCOUNT=${1:-$SGNL_ADMIN_USER}
+SNAPSHOT=${2:-latest}
+
+ssh "$HOST" "export ACCOUNT='$ACCOUNT' SNAPSHOT='$SNAPSHOT' SGNL_APPS_DOMAIN='$SGNL_APPS_DOMAIN'; exec bash -s" <<'REMOTE'
+set -euo pipefail
+B=/opt/sgnl/backup
+T=$B/restore-test-opencloud
+NAME=sgnl-restore-test-opencloud
+CONF=$T/staging/sgnl_opencloud_config
+DATA=$T/staging/sgnl_opencloud_data
+cleanup() {
+  docker rm -f $NAME >/dev/null 2>&1 || true
+  docker network rm $NAME >/dev/null 2>&1 || true
+  rm -rf "$T"
+}
+trap cleanup EXIT
+cleanup
+
+LIVE=$(docker ps -qf label=service=sgnl-opencloud | head -1)
+[[ -n $LIVE ]] || { echo "live OpenCloud not running (needed for its image, env and for comparison)"; exit 1; }
+IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
+LIVEDATA=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/opencloud"}}{{.Source}}{{end}}{{end}}' "$LIVE")
+
+echo "==> restoring OpenCloud from snapshot $SNAPSHOT"
+docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
+  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-opencloud \
+  --include /staging/sgnl_opencloud_config --include /staging/sgnl_opencloud_data -q
+[[ -s $CONF/opencloud.yaml ]] || { echo "MISSING in backup: opencloud.yaml"; exit 1; }
+chown -R 1000:1000 "$CONF" "$DATA"
+echo "    restored: config $(du -sh "$CONF" | cut -f1), data $(du -sh "$DATA" | cut -f1) (opencloud.yaml present)"
+
+echo "==> user files: SHA-256, restored vs live"
+sums() { ( cd "$1/storage/users/users" 2>/dev/null && find . -type f -not -path '*/.*' -print0 | sort -z | xargs -0 -r sha256sum ) || true; }
+sums "$DATA" > "$T/restored.sums"; sums "$LIVEDATA" > "$T/live.sums"
+echo "    files: restored $(wc -l < "$T/restored.sums"), live $(wc -l < "$T/live.sums")"
+if diff -q "$T/restored.sums" "$T/live.sums" >/dev/null; then
+  echo "    all identical"
+else
+  echo "    differences (expected only for files changed since the snapshot):"
+  diff <(awk '{print $2" "$1}' "$T/restored.sums") <(awk '{print $2" "$1}' "$T/live.sums") | grep '^[<>]' | sed 's/^</      only\/older in backup:/; s/^>/      only\/newer on live:  /' | cut -c1-140 | head -20
+fi
+[[ -s $T/restored.sums ]] || echo "    (no user files in this snapshot)"
+
+echo "==> booting a throwaway OpenCloud on it (no internet, no ports)"
+# Same env as live (incl. secrets), in a root-only file that is deleted
+# with the scratch dir. Same csp.yaml/proxy.yaml as live.
+( umask 077; docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LIVE" | grep -vE '^(PATH|HOME|HOSTNAME|KAMAL_)' > "$T/env" )
+docker network create --internal $NAME >/dev/null
+# OC_URL -> itself: downloads go through OpenCloud's own data gateway URL,
+# and the public one isn't reachable from the isolated network.
+docker run -d --name $NAME --network $NAME --env-file "$T/env" -e OC_URL=http://localhost:9200 \
+  -v "$CONF:/etc/opencloud" -v "$DATA:/var/lib/opencloud" \
+  -v /opt/sgnl/opencloud/csp.yaml:/etc/opencloud/csp.yaml:ro \
+  -v /opt/sgnl/opencloud/proxy.yaml:/etc/opencloud/proxy.yaml:ro "$IMAGE" >/dev/null
+rm -f "$T/env"
+oc() { docker exec $NAME curl -sS "$@"; }
+for i in $(seq 1 45); do
+  oc -f http://localhost:9200/status.php 2>/dev/null | grep -Eq '"installed" *: *true' && break
+  [[ $i == 45 ]] && { echo "restored OpenCloud never answered /status.php"; docker logs --tail 200 $NAME 2>&1 | grep -E '"level":"(error|fatal)"' | cut -c1-200 | tail -8; exit 1; }
+  sleep 2
+done
+echo "    /status.php: ok"
+sleep 10 # internal services (graph, auth-app) come up after the proxy
+
+# No jq on the host: small Python filters for the Graph API's JSON.
+users_of() { python3 -c 'import json,sys; print(",".join(sorted(u["onPremisesSamAccountName"] for u in json.load(sys.stdin)["value"])))'; }
+personal_drive() { python3 -c 'import json,sys; print(next((d["id"] for d in json.load(sys.stdin)["value"] if d.get("driveType")=="personal"),""))'; }
+token() { docker exec "$1" opencloud auth-app create --user-name "$2" --expiration 5m 2>/dev/null | sed -n 's/^ *token: *//p'; }
+AT=$(token $NAME admin)
+[[ -n $AT ]] || { echo "could not create an admin app token in the restored instance"; docker logs --tail 200 $NAME 2>&1 | grep -E '"level":"(error|fatal)"' | cut -c1-200 | tail -8; exit 1; }
+R_USERS=$(oc -u "admin:$AT" http://localhost:9200/graph/v1.0/users | users_of)
+L_USERS=$(docker exec "$LIVE" curl -sS -H "Host: drive.$SGNL_APPS_DOMAIN" -H 'X-Forwarded-Proto: https' -u "admin:$(token "$LIVE" admin)" http://localhost:9200/graph/v1.0/users | users_of)
+echo "==> users: restored [$R_USERS] | live [$L_USERS]"
+
+echo "==> $ACCOUNT's files as served by the restored OpenCloud"
+UT=$(token $NAME "$ACCOUNT")
+[[ -n $UT ]] || { echo "    no account $ACCOUNT in the restored instance"; exit 1; }
+DRIVE=$(oc -u "$ACCOUNT:$UT" http://localhost:9200/graph/v1.0/me/drives | personal_drive)
+[[ -n $DRIVE ]] || { echo "    no personal space for $ACCOUNT; /me/drives answered:"; oc -u "$ACCOUNT:$UT" http://localhost:9200/graph/v1.0/me/drives | head -c 700; echo; oc -u "$ACCOUNT:$UT" http://localhost:9200/graph/v1.0/me | head -c 300; echo; docker logs --tail 300 $NAME 2>&1 | grep -E '"level":"(error|fatal)"' | grep -v status.php | cut -c1-260 | tail -6; exit 1; }
+LIST=$(oc -u "$ACCOUNT:$UT" -X PROPFIND -H 'Depth: 1' "http://localhost:9200/dav/spaces/$DRIVE" | grep -o '<d:href>[^<]*</d:href>' | sed 's/<[^>]*>//g' | sed "s|.*/dav/spaces/[^/]*/||" | grep -v '^$' || true)
+echo "$LIST" | sed 's/^/    /' | head -20
+FIRST=$(echo "$LIST" | grep -v '/$' | head -1)
+if [[ -n $FIRST ]]; then
+  got=$(oc -u "$ACCOUNT:$UT" "http://localhost:9200/dav/spaces/$DRIVE/$FIRST" | sha256sum | cut -d' ' -f1)
+  name=$(printf '%b' "${FIRST//%/\\x}")
+  want=$(grep -F " ./" "$T/restored.sums" | grep -F "/$name" | head -1 | cut -d' ' -f1)
+  if [[ -n $want && $got == "$want" ]]; then echo "    download of \"$name\": SHA-256 matches the file on disk"
+  else echo "==> restore test FAILED: download of \"$name\" doesn't match (got ${got:0:12}…, disk ${want:0:12}…)"
+    oc -o /dev/null -w '    GET -> %{http_code} %{size_download} bytes, redirect: %{redirect_url}\n' -u "$ACCOUNT:$UT" "http://localhost:9200/dav/spaces/$DRIVE/$FIRST"
+    docker logs --tail 100 $NAME 2>&1 | grep -E '"level":"(error|fatal)"' | grep -v status.php | cut -c1-300 | tail -4; exit 1; fi
+else
+  echo "    (no files to download in $ACCOUNT's personal space)"
+fi
+echo "==> restore test OK (scratch copy removed)"
+REMOTE

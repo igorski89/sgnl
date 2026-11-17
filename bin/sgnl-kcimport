@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+# Keycloak partial import (users etc.) from a JSON file on stdin, as the
+# master admin. Used to create users with a chosen id - partial import
+# keeps it, the plain users API doesn't - so Keycloak's `sub` can equal
+# Authelia's for the same person (instance/docs/PLAN-keycloak.md, phase 0 results).
+# Each user needs "realmRoles": ["default-roles-example"]: partial
+# import doesn't add the default roles, and without them the account
+# console shows "Something went wrong" (its API is refused).
+#   bin/sgnl-kcimport < users.json
+HOST=root@$SGNL_HOST
+pw=$("$(dirname "$0")/sgnl-secret" keycloak-bootstrap-admin-password)
+{ printf '%s\n' "$pw"; cat; } | ssh "$HOST" 'c=$(docker ps -qf label=service=sgnl-keycloak -f label=role=web | head -1)
+  docker exec -i $c sh -c "read -r P; export HOME=/tmp; f=\$(mktemp); cat > \$f
+    /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password \"\$P\" >/dev/null 2>&1 &&
+    /opt/keycloak/bin/kcadm.sh create partialImport -r '"$SGNL_REALM"' -f \$f -o; rm -f \$f"'

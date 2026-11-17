@@ -1,0 +1,50 @@
+# OpenCloud's Content-Security-Policy (PROXY_CSP_CONFIG_FILE_LOCATION).
+# From opencloud-compose stable-7.2, with our hosts filled in: Keycloak
+# (login, token calls) and Collabora (editor iframe). Dropped: the update
+# check and companion entries.
+directives:
+  child-src:
+    - '''self'''
+  connect-src:
+    - '''self'''
+    - 'blob:'
+    - 'https://id.{{SGNL_APPS_DOMAIN}}'
+    - 'https://raw.githubusercontent.com/opencloud-eu/awesome-apps/'
+    - 'https://tile.openstreetmap.org/'
+  default-src:
+    - '''none'''
+  font-src:
+    - '''self'''
+  frame-ancestors:
+    - '''self'''
+  frame-src:
+    - '''self'''
+    - 'blob:'
+    - 'https://embed.diagrams.net/'
+    - 'https://office.{{SGNL_APPS_DOMAIN}}/'
+    - 'https://id.{{SGNL_APPS_DOMAIN}}'
+    - 'https://docs.opencloud.eu'
+  img-src:
+    - '''self'''
+    - 'data:'
+    - 'blob:'
+    - 'https://raw.githubusercontent.com/opencloud-eu/awesome-apps/'
+    - 'https://tile.openstreetmap.org/'
+    - 'https://office.{{SGNL_APPS_DOMAIN}}/'
+  manifest-src:
+    - '''self'''
+  media-src:
+    - '''self'''
+  object-src:
+    - '''self'''
+    - 'blob:'
+  script-src:
+    - '''self'''
+    - '''unsafe-inline'''
+    - 'https://id.{{SGNL_APPS_DOMAIN}}'
+  style-src:
+    - '''self'''
+    - '''unsafe-inline'''
+  worker-src:
+    - '''self'''
+    - 'blob:'

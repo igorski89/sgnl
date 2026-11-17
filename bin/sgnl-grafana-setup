@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Grafana's second organization, "Logs" (admins only), and what's in it.
+# Idempotent: run after the first deploy of the logs stack, after a lost
+# sgnl_grafana_data volume, and after editing docker/grafana/logs-org/.
+#
+#   bin/sgnl-grafana-setup
+#
+# Why an org and a script (instance/docs/PLAN-monitoring.md, "Logs"): Grafana OSS
+# lets every member of an org query every datasource of that org through
+# the API, so logs are only admin-only in an org that only admins are in
+# (GF_AUTH_GENERIC_OAUTH_ORG_MAPPING in config/deploy.monitoring.yml).
+# File provisioning can't create orgs, and Grafana refuses to start if a
+# provisioning file names an org that doesn't exist yet.
+#
+# Logs in as the break-glass `admin` (password from the Keychain, sent on
+# stdin, never on argv); the session cookie lives in a temp file that is
+# removed on exit.
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+cd "$(dirname "$0")/.."
+
+URL=${GRAFANA_URL:-https://monitor.$SGNL_APPS_DOMAIN}
+ORG=Logs
+DIR=docker/grafana/logs-org
+
+jar=$(mktemp)
+trap 'rm -f "$jar"' EXIT
+
+pw() {
+  if [[ -n ${GRAFANA_ADMIN_PASSWORD:-} ]]; then printf '%s' "$GRAFANA_ADMIN_PASSWORD"
+  else "$(dirname "$0")/sgnl-secret" grafana-admin-password; fi
+}
+pw | jq -Rs '{user: "admin", password: .}' |
+  curl -fsS -c "$jar" -o /dev/null -H 'Content-Type: application/json' --data-binary @- "$URL/login"
+
+api() { curl -fsS -b "$jar" -H 'Content-Type: application/json' "$@"; }
+
+if org_id=$(api "$URL/api/orgs/name/$ORG" 2>/dev/null | jq -er .id); then
+  echo "org $ORG: exists (id $org_id)"
+else
+  org_id=$(api -X POST "$URL/api/orgs" -d "{\"name\":\"$ORG\"}" | jq -er .orgId)
+  echo "org $ORG: created (id $org_id)"
+fi
+inorg() { api -H "X-Grafana-Org-Id: $org_id" "$@"; }
+
+jq -c '.[]' "$DIR/datasources.json" | while read -r ds; do
+  uid=$(jq -r .uid <<<"$ds")
+  if inorg "$URL/api/datasources/uid/$uid" >/dev/null 2>&1; then
+    inorg -X PUT "$URL/api/datasources/uid/$uid" -d "$ds" >/dev/null && echo "datasource $uid: updated"
+  else
+    inorg -X POST "$URL/api/datasources" -d "$ds" >/dev/null && echo "datasource $uid: created"
+  fi
+done
+
+if ! inorg "$URL/api/folders/sgnl-logs" >/dev/null 2>&1; then
+  inorg -X POST "$URL/api/folders" -d '{"uid":"sgnl-logs","title":"Logs"}' >/dev/null
+  echo "folder Logs: created"
+fi
+for f in "$DIR"/*.json; do
+  [[ $f == */datasources.json ]] && continue
+  # The co-tenant app (SGNL_COTENANT) gets its own entry in the tenant
+  # picker, after "all".
+  jq --arg c "${SGNL_COTENANT:-}" '
+    (if $c == "" then . else
+      .templating.list |= map(if .name == "scope" then
+        .query |= sub("^all : \\*, "; "all : *, \($c) : tenant:\($c), ")
+        | .options |= (.[:1] + [{text: $c, value: "tenant:\($c)", selected: false}] + .[1:])
+      else . end) end)
+    | {dashboard: (. + {id: null}), folderUid: "sgnl-logs", overwrite: true, message: "bin/sgnl-grafana-setup"}' "$f" |
+    inorg -X POST "$URL/api/dashboards/db" --data-binary @- | jq -r '"dashboard \(.uid): \(.status) (version \(.version))"'
+done

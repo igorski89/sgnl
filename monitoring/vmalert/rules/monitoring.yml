@@ -1,0 +1,80 @@
+# The monitoring stack itself. If Alertmanager can't send mail, these
+# can't reach anyone either: they show in Grafana (Alerting) and in
+# Alertmanager's own UI.
+groups:
+  - name: monitoring
+    rules:
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total{job="alertmanager"}[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Alertmanager failed to send {{ $value }} notification(s) via {{ $labels.integration }}"
+
+      - alert: VmalertRuleErrors
+        expr: increase(vmalert_execution_errors_total{job=~"vmalert|vmalert-logs"}[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }}: rule evaluation errors (see its logs / UI)"
+
+      # A rule file that doesn't parse (ours or cotenant's) blocks the whole
+      # reload: the old rules keep running, nothing new loads, and
+      # VmalertRuleErrors stays quiet (seen 2026-10-26).
+      - alert: VmalertConfigReloadFailing
+        expr: vmalert_config_last_reload_successful{job=~"vmalert|vmalert-logs"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} can't load its rule files (docker logs sgnl-{{ $labels.job }} | grep 'cannot parse')"
+
+      - alert: VmagentRemoteWriteFailing
+        expr: increase(vmagent_remotewrite_errors_total{job="vmagent"}[15m]) > 0 or increase(vmagent_remotewrite_retries_count_total{job="vmagent"}[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "vmagent can't write to VictoriaMetrics"
+
+      - alert: ScrapeTargetsMissing
+        expr: absent(up{sd="docker"})
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "vmagent discovered no containers with metrics.port (Docker socket or discovery broken?)"
+
+  # Logs (Vector -> VictoriaLogs).
+  - name: logs
+    rules:
+      - alert: LogsNotArriving
+        expr: sum(rate(vl_rows_ingested_total{job="victorialogs"}[15m])) == 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "VictoriaLogs has received no log lines for 15 min (is sgnl-vector running?)"
+
+      - alert: VectorErrors
+        expr: sum by (component_id) (increase(vector_component_errors_total{job="vector"}[15m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Vector component {{ $labels.component_id }}: {{ $value }} errors in 15 min (docker logs sgnl-vector)"
+
+      - alert: VectorDroppingLogs
+        expr: sum by (component_id) (increase(vector_component_discarded_events_total{job="vector",intentional="false"}[15m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Vector dropped {{ $value }} log lines in 15 min at {{ $labels.component_id }}"
+
+      # The 2 GB cap is reached before 30 days: the oldest days are being
+      # dropped early. Not urgent; raise the cap or find the noisy service.
+      - alert: LogsDiskCapReached
+        expr: sum(vl_data_size_bytes{job="victorialogs"}) / max(vl_max_disk_space_usage_bytes{job="victorialogs"}) > 0.9
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "VictoriaLogs uses {{ $value | humanizePercentage }} of its disk cap: logs are kept less than 30 days"
+
+      # The host always logs something within an hour (cron, sshd, timers);
+      # silence means journalctl in sgnl-vector can't read the journal.
+      - alert: HostJournalNotArriving
+        expr: sum(increase(vector_component_received_events_total{job="vector",component_id="journal"}[1h])) == 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "No host journal lines reached Vector in the last hour (docker logs sgnl-vector | grep journal)"

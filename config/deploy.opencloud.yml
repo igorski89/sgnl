@@ -1,0 +1,127 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Files: storage, sync apps, sharing, share links (drive.sgnl). Replaces the
+# Nextcloud plan (decided 2026-10-11): one Go service, no database or Redis,
+# files and metadata in its own volumes. Live editing of office files comes
+# from Collabora (config/deploy.collabora.yml) through OpenCloud's built-in
+# collaboration (WOPI) service.
+#
+# Login only through Keycloak (OC_EXCLUDE_RUN_SERVICES=idp; Authelia until
+# 2026-10-19): four public OIDC clients (web, desktop, iOS, Android) in
+# keycloak/realm.yaml, advertised to the apps via WEBFINGER_*. Accounts are
+# created at first login and found again by preferred_username (not by
+# issuer/sub); roles come from groups (opencloud/proxy.yaml).
+# Reference: opencloud-compose stable-7.2 (tested with OpenCloud 7.2.4).
+service: sgnl-opencloud
+image: sgnl-opencloud
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-opencloud
+
+proxy:
+  ssl: true
+  host: drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 9200
+  healthcheck:
+    path: /status.php
+  # Large uploads (TUS) and downloads stream through.
+  buffering:
+    requests: false
+    responses: false
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/opencloud/Dockerfile
+  context: docker/opencloud
+
+# csp.yaml and proxy.yaml are uploaded to /opt/sgnl/opencloud by
+# .kamal/hooks/pre-app-boot (Kamal 2 has no files: for apps).
+volumes:
+  - "sgnl_opencloud_config:/etc/opencloud"
+  - "sgnl_opencloud_data:/var/lib/opencloud"
+  - "/opt/sgnl/opencloud/csp.yaml:/etc/opencloud/csp.yaml:ro"
+  - "/opt/sgnl/opencloud/proxy.yaml:/etc/opencloud/proxy.yaml:ro"
+
+env:
+  secret:
+    # Local admin in OpenCloud's own user store; there's no login form for it
+    # (idp is off), so it's only for CLI/API break-glass.
+    - IDM_ADMIN_PASSWORD:OPENCLOUD_ADMIN_PASSWORD
+    - NOTIFICATIONS_SMTP_USERNAME:AWS_SES_SMTP_USERNAME
+    - NOTIFICATIONS_SMTP_PASSWORD:AWS_SES_SMTP_PASSWORD
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    OC_URL: "https://drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    OC_LOG_LEVEL: "info"
+    PROXY_TLS: "false"          # kamal-proxy terminates TLS
+    OC_INSECURE: "false"
+    PROXY_ENABLE_BASIC_AUTH: "false"
+    IDM_CREATE_DEMO_USERS: "false"
+    OC_DEFAULT_LANGUAGE: "en"
+    FRONTEND_ARCHIVER_MAX_SIZE: "10000000000"
+    FRONTEND_CHECK_FOR_UPDATES: "false"
+    PROXY_CSP_CONFIG_FILE_LOCATION: "/etc/opencloud/csp.yaml"
+    OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: "true"
+    OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD: "true"
+    # --- Keycloak (OIDC) ---
+    OC_OIDC_ISSUER: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
+    OC_EXCLUDE_RUN_SERVICES: "idp"
+    PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD: "jwt"
+    PROXY_OIDC_REWRITE_WELLKNOWN: "true"
+    PROXY_AUTOPROVISION_ACCOUNTS: "true"
+    PROXY_AUTOPROVISION_CLAIM_USERNAME: "preferred_username"
+    PROXY_AUTOPROVISION_CLAIM_EMAIL: "email"
+    PROXY_AUTOPROVISION_CLAIM_DISPLAYNAME: "name"
+    PROXY_AUTOPROVISION_CLAIM_GROUPS: "groups"
+    PROXY_ROLE_ASSIGNMENT_DRIVER: "oidc"
+    GRAPH_ASSIGN_DEFAULT_USER_ROLE: "false"
+    PROXY_CONFIG_FILE: "/etc/opencloud/proxy.yaml"
+    # Web: no offline_access; the browser app renews while the Keycloak
+    # session lives. Apps keep offline_access (stay logged in on devices).
+    # The web UI reads WEB_OIDC_* (config.json); WEBFINGER_* is what the
+    # apps discover. Both must name the Keycloak client.
+    WEB_OIDC_CLIENT_ID: "opencloud"
+    WEB_OIDC_SCOPE: "openid profile email groups"
+    WEBFINGER_WEB_OIDC_CLIENT_ID: "opencloud"
+    WEBFINGER_WEB_OIDC_CLIENT_SCOPES: "openid profile email groups"
+    WEBFINGER_ANDROID_OIDC_CLIENT_ID: "opencloud-android"
+    WEBFINGER_ANDROID_OIDC_CLIENT_SCOPES: "openid profile email groups offline_access"
+    WEBFINGER_IOS_OIDC_CLIENT_ID: "opencloud-ios"
+    WEBFINGER_IOS_OIDC_CLIENT_SCOPES: "openid profile email groups offline_access"
+    WEBFINGER_DESKTOP_OIDC_CLIENT_ID: "opencloud-desktop"
+    WEBFINGER_DESKTOP_OIDC_CLIENT_SCOPES: "openid profile email groups offline_access"
+    # --- Collabora via the built-in collaboration (WOPI) service ---
+    # auth-app: app tokens (basic auth user + token). bin/sgnl-user-suspend
+    # makes a 5-minute one for the local admin to call the Graph API; people
+    # can also create their own for WebDAV tools. They bypass SSO, so
+    # suspend disables the OpenCloud account itself.
+    OC_ADD_RUN_SERVICES: "collaboration,auth-app"
+    PROXY_ENABLE_APP_AUTH: "true"
+    FRONTEND_APP_HANDLER_SECURE_VIEW_APP_ADDR: "eu.opencloud.api.collaboration"
+    GRAPH_AVAILABLE_ROLES: "b1e2218d-eef8-4d4c-b82d-0f1a1b48f3b5,a8d5fe5e-96e3-418d-825b-534dbdf22b99,fb6c3e19-e378-47e5-b277-9732f9de6e21,58c63c02-1d89-4572-916a-870abc5a1b7d,2d00ce52-1fc2-4dbc-8b95-a73b73395f5a,1c996275-f1c9-4e71-abdf-a42f6495e960,312c0871-5ef7-4b3a-85b6-0e4074c64049,aa97fe03-7980-45ac-9e50-b325749fd7e6"
+    COLLABORATION_WOPI_SRC: "https://drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    COLLABORATION_APP_NAME: "CollaboraOnline"
+    COLLABORATION_APP_PRODUCT: "Collabora"
+    COLLABORATION_APP_ADDR: "https://office.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    COLLABORATION_APP_ICON: "https://office.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/favicon.ico"
+    COLLABORATION_APP_INSECURE: "false"
+    COLLABORATION_CS3API_DATAGATEWAY_INSECURE: "false"
+    # Default 30s. Each tick also fetches Collabora's /hosting/discovery with
+    # a new HTTP client that never closes its connection (OpenCloud bug, still
+    # in 9.0.0): at 30s the ports towards kamal-proxy ran out in 9.8 days
+    # (instance/docs/TODO.md). After a failed fetch the office apps stay gone until
+    # the next tick, so this is also the recovery time after a Collabora outage.
+    COLLABORATION_CS3API_APP_REGISTRATION_INTERVAL: "10m"
+    # --- Mail (SES) ---
+    NOTIFICATIONS_SMTP_HOST: "<%= ENV.fetch("SGNL_SMTP_HOST") %>"
+    NOTIFICATIONS_SMTP_PORT: "587"
+    NOTIFICATIONS_SMTP_SENDER: "SGNL Drive <drive@<%= ENV.fetch("SGNL_DOMAIN") %>>"
+    NOTIFICATIONS_SMTP_AUTHENTICATION: "plain"
+    NOTIFICATIONS_SMTP_ENCRYPTION: "starttls"
+    NOTIFICATIONS_SMTP_INSECURE: "false"

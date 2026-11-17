@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+# Dumps everything the deploy configs turn into, after ERB and instance
+# values: each config/deploy.*.yml as Kamal parses it (keys sorted), each
+# accessory file as Kamal would upload it (.erb rendered), and each file
+# the pre-app-boot hook uploads (rendered). Used to prove a refactor
+# changes nothing: dump before, dump after, diff.
+#
+#   bin/sgnl-config-dump <out-dir>
+#
+# Secrets: run with fake ones, SGNL_SECRETS=csv:<file with fake values>;
+# Kamal's parsed config only holds secret *names* anyway.
+require "kamal"
+require "yaml"
+require "fileutils"
+
+out = ARGV[0] or abort("usage: bin/sgnl-config-dump <out-dir>")
+root = File.expand_path("..", __dir__)
+Dir.chdir(root)
+FileUtils.mkdir_p(out)
+
+def deep_sort(o)
+  case o
+  when Hash then o.keys.map(&:to_s).sort.to_h { |k| [k, deep_sort(o[k] || o[k.to_sym])] }
+  when Array then o.map { |v| deep_sort(v) }
+  else o
+  end
+end
+
+Dir["config/deploy.*.yml"].sort.each do |path|
+  name = File.basename(path, ".yml").sub("deploy.", "")
+  config = Kamal::Configuration.create_from(config_file: Pathname.new(path), version: "dump")
+  File.write(File.join(out, "#{name}.config.yml"), YAML.dump(deep_sort(config.raw_config.to_h)))
+
+  config.accessories.each do |acc|
+    acc.files.each do |local, spec|
+      remote = spec.is_a?(Hash) ? spec[:container_path] : spec
+      content = local.respond_to?(:read) ? local.read : File.read(local)
+      File.write(File.join(out, "#{name}.accessory.#{acc.name}#{remote.tr('/', '_')}"), content)
+    end
+  end
+
+  # Files the pre-app-boot hook uploads for this service, as it renders them.
+  hook = IO.popen({ "KAMAL_SERVICE" => config.service, "SGNL_HOOK_DUMP" => "1" },
+                  [".kamal/hooks/pre-app-boot"], &:read)
+  File.write(File.join(out, "#{name}.hook.txt"), hook) unless hook.empty?
+end
+# Files the apply scripts render (realm, Stalwart plans), with whatever
+# secrets SGNL_SECRETS gives (use fake ones).
+{ "keycloak.realm.rendered" => %w[bin/sgnl-keycloak-apply --render],
+  "stalwart.plan.rendered" => %w[bin/stalwart-apply --render],
+  "stalwart.plan-oidc.rendered" => %w[bin/stalwart-apply stalwart/plan-oidc.ndjson --render] }.each do |file, cmd|
+  File.write(File.join(out, file), IO.popen(cmd, &:read))
+  abort("#{cmd.join(' ')} failed") unless $?.success?
+end
+# Host files bin/sgnl-backup-install uploads, rendered.
+Dir["host/backup/*"].sort.each do |f|
+  File.write(File.join(out, "host.#{File.basename(f)}"), IO.popen(["bin/sgnl-render", f], &:read))
+end
+puts "dumped to #{out}"

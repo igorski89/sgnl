@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!-- SGNL recovery sheet: template. bin/sgnl-recovery-sheet fills in the
+     {{...}} values from bin/sgnl-secret (Vaultwarden) and writes only a password-protected PDF.
+     Readable by a person and by an agent (plain text, commands ready to
+     run). The rebuild steps themselves live in the backups
+     (docs/RECOVERY.md inside the bootstrap bundle). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SGNL recovery sheet</title>
+<style>
+  @page { size: A4; margin: 10mm 13mm 9mm; }
+  * { box-sizing: border-box; }
+  body { font: 9pt/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #111; margin: 0; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           border-bottom: 2px solid #111; padding-bottom: 2mm; margin-bottom: 2.5mm; }
+  h1 { white-space: nowrap; font-size: 16pt; margin: 0; }
+  .meta { font-size: 8pt; text-align: right; white-space: nowrap; }
+  .warn { background: #111; color: #fff; padding: 1.6mm 3mm; font-weight: 600; margin-bottom: 2.5mm; }
+  section { border: 1px solid #999; border-radius: 1.5mm; padding: 1.8mm 3mm 2mm; margin-bottom: 2mm; }
+  h2 { font-size: 10.5pt; margin: 0 0 1.2mm; }
+  h2 .n { display: inline-block; width: 5.5mm; height: 5.5mm; border-radius: 50%; background: #111; color: #fff;
+          text-align: center; line-height: 5.5mm; font-size: 8.5pt; margin-right: 1.5mm; }
+  p { margin: 0 0 1.4mm; }
+  ol { margin: 0.5mm 0 0; padding-left: 5mm; }
+  li { margin-bottom: 0.8mm; }
+  code { font: 8pt Menlo, monospace; }
+  pre { font: 7.6pt/1.4 Menlo, monospace; background: #f4f4f4; border: 1px solid #ddd; border-radius: 1mm;
+        padding: 1.8mm 2.2mm; margin: 1mm 0 1.4mm; white-space: pre-wrap; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.5pt; margin-top: 1mm; }
+  td { padding: 0.8mm 2mm 0.8mm 0; vertical-align: top; }
+  td:first-child { width: 34mm; color: #444; }
+  td code { word-break: break-all; }
+  footer { font-size: 8pt; border-top: 1px solid #999; padding-top: 1.6mm; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SGNL recovery sheet</h1>
+  <div class="meta">{{SGNL_ORG_NAME}} · generated {{DATE}} · repo commit {{COMMIT}}</div>
+</header>
+
+<div class="warn">Secret. This page opens the company's mail, files, vault and every server secret. Keep it only as this password-protected file.</div>
+
+<p><b>What this is.</b> Everything needed to rebuild the SGNL server of {{SGNL_ORG_NAME}} from its backups.
+The backups (Cloudflare R2, encrypted with restic) hold the app data and a <i>bootstrap bundle</i>: the configuration
+repo, all server secrets and the step-by-step rebuild guide <code>docs/RECOVERY.md</code>. Nothing is needed from the old
+laptop or server. <b>If you are a person:</b> do section 1, then give this file to an agent.
+<b>If you are an agent:</b> go to section 2.</p>
+
+<section>
+  <h2><span class="n">1</span>The owner does (about 15 min)</h2>
+  <ol>
+    <li><b>Server:</b> Hetzner Cloud (personal email login) → new server, Ubuntu 24.04, x86,
+      16 vCPU / 32 GB / 150 GB or more. Add the SSH key of the Mac the agent works on.</li>
+    <li><b>Any Mac</b> with Docker Desktop running and an agent (Claude Code, Codex, ...). Nothing else needs to be on it.</li>
+    <li>Hand this sheet to the agent with the new server's IP and <i>"Rebuild SGNL as this sheet says."</i> Either
+      open it in Preview, <b>⌘A, ⌘C</b>, and paste into the agent; or give it the file and its password
+      (it opens it with <code>qpdf --decrypt</code> or <code>pdftotext -upw</code>).</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="n">2</span>For the agent</h2>
+  <p>You are rebuilding SGNL onto a new server. The owner gives you its IP; root SSH works from this Mac.
+  Run this first (it fetches the bootstrap bundle and unpacks the repo):</p>
+<pre>mkdir -m 700 ~/sgnl-recovery &amp;&amp; cd ~/sgnl-recovery
+R2={{SGNL_R2_ENDPOINT}}
+export RESTIC_REPOSITORY="s3:https://$R2/{{SGNL_BACKUP_BUCKET}}"
+export AWS_ACCESS_KEY_ID='{{R2_ID}}'
+export AWS_SECRET_ACCESS_KEY='{{R2_SECRET}}'
+export RESTIC_PASSWORD='{{RESTIC_PASSWORD}}'
+docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+  restic/restic:0.18.0 --no-lock dump --host bootstrap latest /sgnl-bootstrap.tar | tar -x
+git clone sgnl-bootstrap/repo.bundle sgnl</pre>
+  <p>Then read <code>~/sgnl-recovery/sgnl/docs/RECOVERY.md</code> and follow it from phase 2 (phase 1 is the block above),
+  phase by phase. Don't skip a phase's <b>Check</b>. Don't print the secrets in your replies or logs.
+  Ask the owner before changing DNS, and wherever <code>RECOVERY.md</code> says to.</p>
+</section>
+
+<section>
+  <h2><span class="n">3</span>The keys (same values as above)</h2>
+  <table>
+    <tr><td>restic repository</td><td><code>{{REPOSITORY}}</code></td></tr>
+    <tr><td>R2 access key ID</td><td><code>{{R2_ID}}</code></td></tr>
+    <tr><td>R2 secret access key</td><td><code>{{R2_SECRET}}</code></td></tr>
+    <tr><td>restic password</td><td><code>{{RESTIC_PASSWORD}}</code></td></tr>
+  </table>
+  <p style="margin-top:1.4mm">Also in Apple Passwords (search “SGNL backups”) and Vaultwarden, folder “SGNL infra”
+  (<code>{{SGNL_PREFIX}}-restic-password</code>, <code>-backup-s3-access-key-id</code>, <code>-backup-s3-secret-access-key</code>).</p>
+</section>
+
+<section>
+  <h2><span class="n">4</span>Afterwards</h2>
+  <p>If this file was opened somewhere you don't trust, change the restic password and the R2 key
+  (<code>RECOVERY.md</code>, phase 6), then make a new sheet: <code>bin/sgnl-recovery-sheet</code>.
+  Covers SGNL only: <b>{{SGNL_COTENANT}}</b>, on the same server, has its own backups.</p>
+</section>
+
+<footer>
+  <span>Make a new one after changing the restic password or the R2 key.</span>
+  <span>Source: sgnl repo, docs/instance-sheet.html + bin/sgnl-recovery-sheet</span>
+</footer>
+
+</body>
+</html>

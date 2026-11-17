@@ -1,0 +1,27 @@
+# Dashboards come from files, one folder per tenant. Edits in the UI are
+# allowed but lost on the next deploy: change the JSON in git instead.
+# All in org 1 (everyone); the Logs org's dashboard is applied by
+# bin/sgnl-grafana-setup.
+apiVersion: 1
+
+providers:
+  - name: sgnl
+    orgId: 1
+    folder: SGNL
+    type: file
+    allowUiUpdates: true
+    disableDeletion: true
+    options:
+      path: /var/lib/grafana-dashboards/sgnl
+  # The co-tenant app's own dashboards (SGNL_COTENANT, set in the deploy
+  # env; /root/<name>-monitoring/dashboards on the host, written by that
+  # app). Without a co-tenant the folder points at nothing.
+  - name: ${SGNL_COTENANT}
+    orgId: 1
+    folder: ${SGNL_COTENANT}
+    type: file
+    allowUiUpdates: true
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana-dashboards/${SGNL_COTENANT}

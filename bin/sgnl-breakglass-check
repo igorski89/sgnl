@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Proves the break-glass copy in Apple Passwords opens the backups,
+# without the Keychain or the server: asks for the restic password and
+# the R2 key (paste each from Passwords; input is hidden), then, on this
+# Mac via Docker, lists the latest snapshots and restores /config
+# (Stalwart's config, small) into a temp dir that is deleted afterwards.
+# Read-only on the repository (--no-lock). instance/docs/PLAN-recovery.md, step C.
+#
+#   bin/sgnl-breakglass-check
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+REPO="s3:https://$SGNL_R2_ENDPOINT/$SGNL_BACKUP_BUCKET"
+IMAGE=restic/restic:0.18.0
+
+read -rsp "restic password (SGNL backups: restic password): " RESTIC_PASSWORD; echo
+read -rsp "R2 access key ID (SGNL backups: R2 access key ID): " AWS_ACCESS_KEY_ID; echo
+read -rsp "R2 secret key (SGNL backups: R2 secret key): " AWS_SECRET_ACCESS_KEY; echo
+export RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY RESTIC_REPOSITORY="$REPO"
+
+T=$(mktemp -d)
+trap 'rm -rf "${T:?}"' EXIT
+
+# -e NAME (no value): taken from this environment, not the command line.
+restic() {
+  docker run --rm -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+    -v "$T:/restore" "$IMAGE" --no-lock "$@"
+}
+
+echo "==> latest snapshots"
+restic snapshots --latest 3
+
+echo "==> restoring /config from the latest snapshot"
+restic restore latest --include /config --target /restore
+n=$(find "$T/config" -type f | wc -l | tr -d ' ')
+echo "$n files restored, e.g.:"
+find "$T/config" -type f | head -5 | sed "s|^$T||"
+
+if [[ $n -gt 0 ]]; then
+  echo "OK: the copy in Passwords opens the backups."
+else
+  echo "FAILED: nothing restored." >&2; exit 1
+fi

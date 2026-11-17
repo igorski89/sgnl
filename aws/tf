@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Wraps the official hashicorp/terraform image so `terraform init/plan/apply`
+# don't depend on anything installed on the host. Usage: ./tf plan, ./tf apply, etc.
+# Credentials come from bin/sgnl-secret, see .docker-aws-env.
+cd "$(dirname "$0")"
+source ./.docker-aws-env
+
+# Instance values (instance/sgnl.env) as Terraform input variables.
+# A terraform.tfvars, if present, overrides these.
+source ../lib/instance.sh
+export TF_VAR_name_prefix=$SGNL_PREFIX
+export TF_VAR_domain_name=$SGNL_DOMAIN
+export TF_VAR_inbound_bucket_name=$SGNL_PREFIX-inbound-mail
+export TF_VAR_stalwart_host=mail.$SGNL_APPS_DOMAIN
+export TF_VAR_relay_username=ses-relay@$SGNL_DOMAIN
+export TF_VAR_notification_email=$SGNL_ALERT_EMAIL
+TF_ENV=()
+for v in name_prefix domain_name inbound_bucket_name stalwart_host relay_username notification_email; do
+  TF_ENV+=(-e "TF_VAR_$v")
+done
+
+docker run --rm "${DOCKER_TTY[@]}" "${DOCKER_AWS_ENV[@]}" "${TF_ENV[@]}" \
+  -v "$PWD:/workspace" -w /workspace \
+  hashicorp/terraform:1.9 "$@"

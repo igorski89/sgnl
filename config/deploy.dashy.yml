@@ -1,0 +1,39 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Landing page after login (home.sgnl): Dashy, tiles filtered by
+# groups. Config: instance/dashy/conf.yml (uploaded by .kamal/hooks/pre-app-boot to
+# /opt/sgnl/dashy, mounted read-only; UI editing disabled). Login via
+# Keycloak (public PKCE client "dashy", keycloak/realm.yaml; was Authelia
+# until 2026-10-19).
+# No state worth backing up: everything is in git.
+service: sgnl-dashy
+image: sgnl-dashy
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-dashy
+
+proxy:
+  ssl: true
+  host: home.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 8080
+  healthcheck:
+    path: /
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/dashy/Dockerfile
+  context: docker/dashy
+
+volumes:
+  - "/opt/sgnl/dashy/conf.yml:/app/user-data/conf.yml:ro"
+
+env:
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    NODE_ENV: "production"

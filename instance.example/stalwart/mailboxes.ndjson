@@ -1,0 +1,15 @@
+# Mailboxes of this instance: people and shared mailboxes, included by
+# stalwart/plan.ndjson (@include). Same rules as there.
+# Human mailboxes: one line each. The name must match the Keycloak
+# username. No password in the plan: people log in via Keycloak
+# (plan-oidc.ndjson) and create per-device app passwords for native
+# clients. postmaster@ (incl. DMARC reports) is an alias of alice.
+# admin@ is a Group (shared mailbox members open as a folder), and the
+# domain's catch-all (Domain.catchAllAddress below): mail to any unknown
+# @example.com address lands here. Members: memberGroupIds on users.
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"admin-group":{"@type":"Group","name":"admin","domainId":"#mail-domain","description":"admin@: shared mailbox, also the domain catch-all"}}}
+# alerts@: monitoring alerts (Alertmanager via SES, config/deploy.monitoring.yml).
+# Same members as admin@. Lives on this host, so a host-down alert can't reach it.
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alerts-group":{"@type":"Group","name":"alerts","domainId":"#mail-domain","description":"alerts@: monitoring alerts (shared mailbox)"}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alice":{"@type":"User","name":"alice","domainId":"#mail-domain","description":"Alice Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true},"aliases":{"0":{"name":"postmaster","domainId":"#mail-domain","enabled":true}}}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"bob":{"@type":"User","name":"bob","domainId":"#mail-domain","description":"Bob Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true}}}}

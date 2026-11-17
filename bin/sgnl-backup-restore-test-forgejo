@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Restore drill for Forgejo: restores the latest backup's Forgejo volume on
+# the host into a scratch dir, boots a throwaway Forgejo on it (internal
+# Docker network: no internet, no published ports), and checks:
+#   - Forgejo starts on the restored data and its health check passes
+#     (database opens);
+#   - users and repos are there (forgejo admin user list, repo dirs);
+#   - every repo passes git fsck;
+#   - every LFS pointer in every repo's history has its object, with the
+#     right size;
+#   - forgejo doctor's default checks.
+# Compare the counts with the live instance (printed alongside). Cleans up
+# after itself. See docs/BACKUPS.md.
+#
+#   bin/sgnl-backup-restore-test-forgejo [snapshot]   # default: latest
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+HOST=root@$SGNL_HOST
+SNAPSHOT=${1:-latest}
+
+ssh "$HOST" "export SNAPSHOT='$SNAPSHOT'; exec bash -s" <<'REMOTE'
+set -euo pipefail
+B=/opt/sgnl/backup
+T=$B/restore-test-forgejo
+NAME=sgnl-restore-test-forgejo
+DATA=$T/staging/sgnl_forgejo_data
+cleanup() {
+  docker rm -f $NAME >/dev/null 2>&1 || true
+  docker network rm $NAME >/dev/null 2>&1 || true
+  rm -rf "$T"
+}
+trap cleanup EXIT
+cleanup
+
+LIVE=$(docker ps -qf label=service=sgnl-forgejo | head -1)
+[[ -n $LIVE ]] || { echo "live Forgejo not running (needed for its image and for comparison)"; exit 1; }
+IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
+
+echo "==> restoring Forgejo from snapshot $SNAPSHOT"
+docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
+  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-forgejo \
+  --include /staging/sgnl_forgejo_data -q
+chown -R 1000:1000 "$DATA"
+echo "    restored: $(du -sh "$DATA" | cut -f1)"
+
+echo "==> booting a throwaway Forgejo on it (no internet, no ports)"
+# app.ini (incl. its secrets) comes from the restored volume itself, so this
+# also proves the backup alone is enough to start Forgejo.
+docker network create --internal $NAME >/dev/null
+docker run -d --name $NAME --network $NAME -v "$DATA:/var/lib/gitea" "$IMAGE" >/dev/null
+for i in $(seq 1 30); do
+  docker exec $NAME wget -qO- http://localhost:3000/api/healthz 2>/dev/null | grep -q '"status": *"pass"' && break
+  [[ $i == 30 ]] && { echo "restored Forgejo never became healthy"; docker logs --tail 30 $NAME; exit 1; }
+  sleep 2
+done
+echo "    health check: pass (database opens)"
+
+fj() { docker exec "$1" forgejo admin "${@:2}" 2>/dev/null; }
+echo "==> users (restored | live)"
+diff <(fj $NAME user list | awk 'NR>1{print $2}') <(fj "$LIVE" user list | awk 'NR>1{print $2}') >/dev/null &&
+  echo "    same: $(fj $NAME user list | awk 'NR>1{print $2}' | paste -sd, -)" ||
+  echo "    DIFFERENT - restored: $(fj $NAME user list | awk 'NR>1{print $2}' | paste -sd, -), live: $(fj "$LIVE" user list | awk 'NR>1{print $2}' | paste -sd, -)"
+
+echo "==> repos: git fsck + every LFS pointer in history"
+fail=0
+docker exec -i $NAME sh -s <<'IN' || fail=1
+set -e
+cd /var/lib/gitea/git/repositories
+bad=0
+for r in */*.git; do
+  commits=$(git -C "$r" rev-list --all 2>/dev/null | wc -l)
+  git -C "$r" fsck --no-progress --connectivity-only >/dev/null 2>&1 && fsck=ok || { fsck=FAILED; bad=1; }
+  ptrs=0 missing=0
+  for sha in $(git -C "$r" rev-list --objects --all | git -C "$r" cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '$1=="blob" && $3<300 {print $2}'); do
+    c=$(git -C "$r" cat-file -p "$sha")
+    case "$c" in "version https://git-lfs.github.com/spec/v1"*) ;; *) continue ;; esac
+    oid=$(echo "$c" | sed -n 's/^oid sha256://p'); size=$(echo "$c" | sed -n 's/^size //p')
+    ptrs=$((ptrs+1))
+    f=/var/lib/gitea/data/lfs/$(echo $oid|cut -c1-2)/$(echo $oid|cut -c3-4)/$(echo $oid|cut -c5-)
+    [ -f "$f" ] && [ "$(stat -c %s "$f")" = "$size" ] || { missing=$((missing+1)); bad=1; }
+  done
+  echo "    $r: $commits commits, fsck $fsck, LFS $ptrs pointers, $missing missing/wrong size"
+done
+exit $bad
+IN
+echo "    live repos for comparison: $(docker exec "$LIVE" sh -c 'cd /var/lib/gitea/git/repositories && ls -d */*.git' | paste -sd, -)"
+
+echo "==> forgejo doctor (default checks)"
+# The live instance logs to the console and has no data/log, which the
+# paths check insists on (it fails on live too); give the scratch copy one.
+docker exec $NAME mkdir -p /var/lib/gitea/data/log
+docker exec $NAME forgejo doctor check 2>&1 | grep -E '^\[|ERROR|FAIL|All done' | sed 's/^/    /' | tail -20
+echo "    (an ERROR under [4] authorized_keys is expected: SSH is disabled, so the file doesn't exist; same on live)"
+
+[[ $fail == 0 ]] || { echo "==> restore test FAILED (see above)"; exit 1; }
+echo "==> restore test OK (scratch copy removed)"
+REMOTE

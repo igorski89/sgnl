@@ -1,0 +1,68 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# IMAP + JMAP + submission, Stalwart 0.16.
+#
+# 0.16 configuration model (see ../stalwart/plan.ndjson for the details):
+#   - stalwart/config.json (mounted below) only says where the datastore
+#     is. Everything else lives in that datastore.
+#   - Listeners, TLS/ACME, the SES relay route, accounts and the
+#     hardening rules are applied from your laptop with
+#     `bin/stalwart-apply` after the container is up, and re-applied
+#     whenever the plan changes. The Cloudflare token and SES SMTP
+#     credentials therefore live in Stalwart's datastore (sent by the
+#     plan), not in this container's environment.
+#
+# Mail routing (unchanged): MX points at AWS SES, not here. SES writes
+# inbound mail to S3, and a Lambda relays it in over 465 as the
+# dedicated ses-relay account. Outbound relays through SES on 587 (STARTTLS; Hetzner blocks outgoing 465).
+# No port 25 anywhere.
+#
+# Published ports: 465 (submission, implicit TLS - the Lambda and native
+# mail apps) and 993 (IMAPS - native mail apps). Both use the Let's
+# Encrypt certificate Stalwart obtains itself via Cloudflare DNS-01;
+# kamal-proxy only handles 443. JMAP, the web UI (/account, /admin) and
+# Bulwark's API traffic go through kamal-proxy on 443 -> 8080.
+#
+# STALWART_RECOVERY_ADMIN is the break-glass admin that bin/stalwart-apply
+# authenticates as. It stays set so the plan can be re-applied. It's a
+# long random secret, auto-ban applies to it like any login, and it
+# doesn't depend on Keycloak being up. Rotate by changing the Keychain
+# value and redeploying.
+service: sgnl-stalwart
+image: sgnl-stalwart
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-stalwart
+      publish:
+        - "465:465"
+        - "993:993"
+
+proxy:
+  ssl: true
+  host: mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 8080
+  healthcheck:
+    path: /healthz/live
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/stalwart/Dockerfile
+  context: docker/stalwart
+
+# config.json is uploaded to /opt/sgnl/stalwart/ by
+# .kamal/hooks/pre-app-boot (Kamal 2 has no `files:` for app containers).
+volumes:
+  - "sgnl_stalwart_data:/var/lib/stalwart"
+  - "/opt/sgnl/stalwart/config.json:/etc/stalwart/config.json:ro"
+
+env:
+  secret:
+    - STALWART_RECOVERY_ADMIN
+  clear:
+    STALWART_PUBLIC_URL: "https://mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"

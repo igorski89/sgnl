@@ -1,0 +1,28 @@
+[
+  {
+    "name": "VictoriaLogs",
+    "uid": "victorialogs",
+    "type": "victoriametrics-logs-datasource",
+    "access": "proxy",
+    "url": "http://sgnl-victorialogs:9428",
+    "isDefault": true
+  },
+  {
+    "name": "VictoriaMetrics",
+    "uid": "victoriametrics",
+    "type": "prometheus",
+    "access": "proxy",
+    "url": "http://sgnl-victoriametrics:8428",
+    "isDefault": false,
+    "jsonData": { "timeInterval": "15s" }
+  },
+  {
+    "name": "Alertmanager",
+    "uid": "alertmanager",
+    "type": "alertmanager",
+    "access": "proxy",
+    "url": "http://sgnl-alertmanager:9093",
+    "isDefault": false,
+    "jsonData": { "implementation": "prometheus", "handleGrafanaManagedAlerts": false }
+  }
+]

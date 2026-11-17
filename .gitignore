@@ -1,0 +1,29 @@
+# Real secrets — the .example template is committed, the actual file is not.
+.kamal/secrets
+authelia/users_database.yml
+authelia/secrets/hmac_secret
+authelia/secrets/oidc_key.pem
+authelia/secrets/*_client_secret_hash
+
+.env
+.env.*
+!.env.*.example
+
+# Terraform — state and generated artifacts, not source.
+# .terraform.lock.hcl is NOT ignored — that one should be committed, it
+# pins provider versions for reproducible applies.
+aws/terraform.tfvars
+aws/.terraform/
+aws/*.tfstate
+aws/*.tfstate.*
+aws/lambda/forwarder/node_modules/
+aws/lambda/forwarder.zip
+
+.DS_Store
+
+# Per-person onboarding material (TOTP QR codes) - hand over, then delete.
+onboarding/
+__pycache__/
+
+# The instance (its own private repo, see README "Your instance").
+/instance/

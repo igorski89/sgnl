@@ -1,0 +1,182 @@
+<% cot = ENV.fetch("SGNL_COTENANT", ""); tenants = [cot, "sgnl"].reject(&:empty?); inc = ->(f, ind) { p = File.join(ENV.fetch("SGNL_INSTANCE_DIR", "instance"), f); File.exist?(p) ? File.read(p).gsub(/^(?=.)/, " " * ind) : "" } %># Vector (config/deploy.monitoring.yml, accessory vector): every
+# container's stdout/stderr and the host's journal -> VictoriaLogs.
+# Uploaded on `kamal accessory reboot vector`.
+#
+# Fields on every log line (the stream fields are the same labels as the
+# metrics, instance/docs/PLAN-monitoring.md "Conventions"):
+#   tenant    <%= tenants.join(" | ") %> | infra (kamal-proxy, the host)   stream field
+#   service   Kamal's `service` label, else the container name stream field
+#   role      Kamal's `role` label (app roles only)          stream field
+#   instance  container name without Kamal's version suffix  stream field
+#   stream    stdout | stderr | journald
+#   kamal-proxy's JSON request lines are parsed into http.* fields.
+#
+# Nothing is stored before the `redact` step: secrets and personal data
+# that the component sessions said can appear in their logs (2026-10-24)
+# are removed or masked there. Add a component's patterns there, not in
+# the apps' log shippers.
+#
+# Gaps: docker_logs has no checkpoint, so lines printed while Vector is
+# down are never collected (tested 2026-10-24: they stay only in Docker's
+# local json files, `docker logs`). The
+# journal is read from where Vector last stopped (cursor in data_dir); on
+# the very first start only from now on.
+data_dir: /var/lib/vector
+
+sources:
+  docker:
+    type: docker_logs
+    docker_host: unix:///var/run/docker.sock
+    # Its own errors about the sink would loop back into the sink.
+    exclude_containers: [sgnl-vector]
+    # Stack traces as one event: Rails ("\tfrom ..."), Python tracebacks
+    # (indented frames, "Traceback ...", "...Error: msg"), Rust panics'
+    # "note:" lines are separate (short anyway).
+    multiline:
+      mode: continue_through
+      start_pattern: '^\S'
+      condition_pattern: '^(\s|Traceback \(most recent call last\)|During handling of the above exception|The above exception was the direct cause|[\w.]+(Error|Exception)(: |$))'
+      timeout_ms: 1000
+
+  # Host's /var/log/journal and /etc/machine-id are mounted at the same
+  # paths, so journalctl finds this machine's journal by itself (the host
+  # also has an older machine id's directory there, which it skips).
+  journal:
+    type: journald
+    since_now: true
+
+  vector_metrics:
+    type: internal_metrics
+
+transforms:
+  shape_docker:
+    type: remap
+    inputs: [docker]
+    source: |
+      name = string(.container_name) ?? ""
+      base = replace(name, r'-[0-9a-f]{40}.*$', "")
+      svc = string(.label.service) ?? ""
+      if svc == "" { svc = base }
+      .service = svc
+      role = string(.label.role) ?? ""
+      if role != "" { .role = role }
+      .instance = base
+      .tenant = <% tenants.each do |t| %>if starts_with(svc, "<%= t %>") { "<%= t %>" } else <% end %>{ "infra" }
+      .container_id = slice(string(.container_id) ?? "", 0, 12) ?? null
+      del(.label)
+      del(.container_name)
+      del(.container_created_at)
+      del(.host)
+      del(.source_type)
+
+      # kamal-proxy: one JSON object per request. Its own "service" and
+      # "host" would collide with ours: everything goes under http.*.
+      if svc == "kamal-proxy" {
+        p, err = parse_json(.message)
+        if err == null && is_object(p) {
+          .level = p.level
+          del(p.time)
+          del(p.level)
+          m = string(p.msg) ?? ""
+          del(p.msg)
+          .http = p
+          if m == "Request" {
+            .message = join!(compact([string(p.method) ?? null, (string(p.host) ?? "") + (string(p.path) ?? ""), to_string(p.status) ?? null]), " ")
+          } else {
+            .message = m
+          }
+        }
+      }
+
+  shape_journal:
+    type: remap
+    inputs: [journal]
+    source: |
+      .tenant = "infra"
+      .instance = "host"
+      .stream = "journald"
+      ident = string(.SYSLOG_IDENTIFIER) ?? ""
+      if ident == "" { ident = if ._TRANSPORT == "kernel" { "kernel" } else { "journald" } }
+      .service = ident
+      unit = string(._SYSTEMD_UNIT) ?? ""
+      if unit != "" {
+        # Per-session/per-mount units would make a new stream each time.
+        unit = replace(unit, r'^session-\d+\.scope$', "session.scope")
+        unit = replace(unit, r'^run-.*\.(scope|mount)$', "run.$1")
+        .unit = unit
+      }
+      .priority = .PRIORITY
+      . = {
+        "message": .message, "timestamp": .timestamp, "tenant": .tenant,
+        "service": .service, "instance": .instance, "stream": .stream,
+        "unit": .unit, "priority": .priority
+      }
+
+  redact:
+    type: remap
+    inputs: [shape_docker, shape_journal]
+    source: |
+      msg = string(.message) ?? ""
+      svc = string(.service) ?? ""
+
+<%= inc.("monitoring/vector-redact.vrl", 6) %>      # Credentials, any service.
+      msg = replace(msg, r'\b([Bb]earer|Basic)\s+[A-Za-z0-9._~+/=-]{16,}', "$1 [redacted]")
+      msg = replace(msg, r'(?i)\b(authorization|cookie|set-cookie|x-api-key|x-auth-token|x-amz-security-token)(["\x27]?\s*[:=]\s*["\x27]?)(?:(?:Bearer|Basic|Digest|AWS4-HMAC-SHA256)\s+)?[^\s"\x27,;}]+', "$1$2[redacted]")
+      msg = replace(msg, r'\b(Signature|Credential)=[A-Za-z0-9/%_+=-]{16,}', "$1=[redacted]")
+      msg = replace(msg, r'\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}', "$1_$2_[redacted]")
+      msg = replace(msg, r'\bwhsec_[A-Za-z0-9]{8,}', "whsec_[redacted]")
+      msg = replace(msg, r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b', "[aws key redacted]")
+      msg = replace(msg, r'\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}', "[jwt redacted]")
+      msg = replace(msg, r'(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@', "$1[redacted]@")
+      # Signed URLs (engine download errors, S3/MinIO) and OAuth/API params.
+      # Any parameter whose name contains token/key/secret/signature/
+      # password/code/credential (reset_password_token, X-Amz-Signature,
+      # access_token, ...).
+      msg = replace(msg, r'(?i)([?&;][A-Za-z0-9_.\[\]-]*(?:token|key|secret|signature|sig|password|passwd|pwd|code|credential|session_state)[A-Za-z0-9_.\[\]-]*=)[^&\s"\x27)]*', "$1[redacted]")
+      # Capability tokens in URL paths: OpenCloud share links (/s/<token>)
+      # and any path segment of 32+ id-like characters (signed blob ids,
+      # Vaultwarden Send ids, invitation tokens).
+      msg = replace(msg, r'/s/[A-Za-z0-9_-]{6,}', "/s/[redacted]")
+      msg = replace(msg, r'/[A-Za-z0-9_=-]{32,}(--[0-9a-f]+)?([/?\s"\x27]|$)', "/[id]$2")
+      msg = replace(msg, r'(?i)\b(password|passwd|pwd|secret|client_secret|api_key|apikey)(["\x27]?\s*[:=]\s*)("[^"]*"|\x27[^\x27]*\x27|[^\s,&}]+)', "$1$2[redacted]")
+      .message = msg
+
+      # kamal-proxy's path and query string, same rules.
+      if exists(.http.path) {
+        hp = string(.http.path) ?? ""
+        hp = replace(hp, r'/s/[A-Za-z0-9_-]{6,}', "/s/[redacted]")
+        hp = replace(hp, r'/[A-Za-z0-9_=-]{32,}(--[0-9a-f]+)?(/|$)', "/[id]$2")
+        .http.path = hp
+      }
+      if exists(.http.query) {
+        q = string(.http.query) ?? ""
+        q = replace(q, r'(?i)((?:^|[&;])[A-Za-z0-9_.\[\]-]*(?:token|key|secret|signature|sig|password|passwd|pwd|code|credential|session_state)[A-Za-z0-9_.\[\]-]*=)[^&]*', "$1[redacted]")
+        q = replace(q, r'\b\d{4,}(\d{4})(@|%40)', "*$1$2")
+        .http.query = q
+      }
+
+sinks:
+  victorialogs:
+    type: elasticsearch
+    inputs: [redact]
+    endpoints: ["http://sgnl-victorialogs:9428/insert/elasticsearch/"]
+    mode: bulk
+    api_version: v8
+    compression: gzip
+    healthcheck:
+      enabled: false
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      _stream_fields: tenant,service,role,instance
+    # VictoriaLogs down or restarting: up to 256 MB queued on disk, then
+    # back-pressure (Docker keeps the lines meanwhile).
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+
+  metrics:
+    type: prometheus_exporter
+    inputs: [vector_metrics]
+    address: 0.0.0.0:9598

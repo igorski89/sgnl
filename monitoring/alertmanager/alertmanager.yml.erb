@@ -1,0 +1,39 @@
+# Alertmanager (config/deploy.monitoring.yml): every alert to alerts@
+# (Stalwart group, same people as admin@) via SES. At container start the
+# SES username replaces __SMTP_USERNAME__ (in a copy under /tmp) and the
+# password goes to /tmp/smtp_password, both from the env (deploy config,
+# cmd), so neither is in git or on the host's disk.
+#
+# alerts@ is on this same host: if the host or Stalwart is down, these
+# mails can't arrive (no external heartbeat yet, instance/docs/PLAN-monitoring.md).
+global:
+  smtp_smarthost: "<%= ENV.fetch("SGNL_SMTP_HOST") %>:587"
+  smtp_from: "SGNL monitoring <monitor@<%= ENV.fetch("SGNL_DOMAIN") %>>"
+  smtp_hello: "monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+  smtp_auth_username: "__SMTP_USERNAME__"
+  smtp_auth_password_file: /tmp/smtp_password
+  smtp_require_tls: true
+
+route:
+  receiver: alerts
+  group_by: [alertname, job, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    # info (e.g. HostRebooted): one mail, no repeats.
+    - matchers: ['severity="info"']
+      receiver: alerts
+      repeat_interval: 7d
+
+receivers:
+  - name: alerts
+    email_configs:
+      - to: "alerts@<%= ENV.fetch("SGNL_DOMAIN") %>"
+        send_resolved: true
+
+inhibit_rules:
+  # A critical alert silences the matching warning (e.g. disk 90% over 80%).
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [job, instance]

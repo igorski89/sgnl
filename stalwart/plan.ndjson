@@ -1,0 +1,99 @@
+# Stalwart 0.16 settings, applied with `bin/stalwart-apply` (which strips
+# these comment lines and fills {{PLACEHOLDERS}} from .kamal/secrets).
+# One JSON object per line; see https://stalw.art/docs/management/cli/apply/
+#
+# 0.16 no longer reads config.toml: config.json only points at the
+# datastore, everything below lives in the database. Object and field
+# names were taken from `stalwart-cli describe` / `snapshot` against
+# stalwartlabs/stalwart:v0.16.25, and this plan was applied to a local
+# 0.16.25 instance before being committed. Durations/periods are in ms.
+#
+# Upserts are idempotent: re-run after any edit. `reconcile` additionally
+# deletes objects of that type that aren't listed here.
+
+# --- Listeners: 465 (submission, implicit TLS), 993 (IMAPS), 8080 (HTTP
+# behind kamal-proxy). Everything else the defaults open (25, 443, 995,
+# 4190) is removed, not just left unpublished.
+{"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"submissions":{"name":"submissions","bind":{"[::]:465":true},"protocol":"smtp","tlsImplicit":true,"useTls":true},"imaps":{"name":"imaps","bind":{"[::]:993":true},"protocol":"imap","tlsImplicit":true,"useTls":true},"http":{"name":"http","bind":{"[::]:8080":true},"protocol":"http","tlsImplicit":false,"useTls":false}}}
+
+# --- Logs to stdout, so `kamal app logs` sees them. Without the setup
+# wizard, 0.16 defaults to a log file under /var/log/stalwart, which
+# doesn't exist in the image.
+{"@type":"reconcile","object":"Tracer","matchOn":"*","value":{"stdout":{"@type":"Stdout","level":"info","enable":true,"ansi":false,"buffered":false,"multiline":false,"lossy":false,"events":{},"eventsPolicy":"exclude"}}}
+
+# --- TLS: Let's Encrypt via Cloudflare DNS-01 -------------------------
+# DNS-01 in 0.16 needs the domain's DNS management set to Automatic,
+# which also publishes and keeps in sync whatever `publishRecords` lists.
+# So the certificate hangs off a dedicated, mailbox-less
+# sgnl.example.com domain that publishes only a harmless TLS-RPT
+# TXT record under sgnl. The real example.com domain stays fully
+# Manual, so Stalwart never touches its MX/SPF/DMARC (those belong to
+# SES, see docs/DNS.md). The certificate covers exactly
+# mail.sgnl.example.com.
+{"@type":"upsert","object":"DnsServer","matchOn":["description"],"value":{"cloudflare":{"@type":"Cloudflare","description":"cloudflare-{{SGNL_ORG_SLUG}}","secret":{"@type":"Value","secret":"{{CLOUDFLARE_API_TOKEN}}"}}}}
+{"@type":"upsert","object":"AcmeProvider","matchOn":["directory"],"value":{"letsencrypt":{"directory":"{{ACME_DIRECTORY}}","challengeType":"Dns01","contact":{"postmaster@{{SGNL_DOMAIN}}":true}}}}
+
+# --- Domains --------------------------------------------------------
+# DKIM is Manual on both: outbound goes through SES, which signs with
+# Easy DKIM (aws/ses.tf). Stalwart signing too would need its own keys
+# published in DNS for no benefit.
+{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Manual"},"certificateManagement":{"@type":"Manual"},"reportAddressUri":"mailto:postmaster@{{SGNL_DOMAIN}}","catchAllAddress":"admin@{{SGNL_DOMAIN}}"}}}
+{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"cert-domain":{"name":"{{SGNL_APPS_DOMAIN}}","description":"TLS certificate only - no mailboxes","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Automatic","dnsServerId":"#cloudflare","origin":"{{SGNL_DOMAIN}}","publishRecords":{"tlsRpt":true}},"certificateManagement":{"@type":"Automatic","acmeProviderId":"#letsencrypt","subjectAlternativeNames":{"mail.{{SGNL_APPS_DOMAIN}}":true}}}}}
+
+# --- Outbound: everything non-local relays through SES on 587 with
+# STARTTLS *required* (TLS strategy "ses-starttls" below, no fallback to
+# invalid certificates). Not 465: Hetzner Cloud blocks outgoing 25 and
+# 465 by default (checked 2026-10-08: SES answers on 587/2587 only).
+{"@type":"upsert","object":"MtaRoute","matchOn":["name"],"value":{"ses":{"@type":"Relay","name":"ses","description":"AWS SES smart host (eu-central-1)","address":"email-smtp.eu-central-1.amazonaws.com","port":587,"implicitTls":false,"allowInvalidCerts":false,"protocol":"smtp","authUsername":"{{AWS_SES_SMTP_USERNAME}}","authSecret":{"@type":"Value","secret":"{{AWS_SES_SMTP_PASSWORD}}"}}}}
+{"@type":"upsert","object":"MtaTlsStrategy","matchOn":["name"],"value":{"ses-starttls":{"name":"ses-starttls","description":"SES relay: STARTTLS required, valid certificate","startTls":"require","allowInvalidCerts":false,"dane":"disable","mtaSts":"disable"}}}
+
+# --- Accounts ---------------------------------------------------------
+# The SES forwarder Lambda's relay account (aws/lambda/forwarder). Machine
+# account: permissions are *replaced* with just authenticate + emailSend,
+# so its credential can submit mail and nothing else (tested: IMAP login
+# refused, JMAP mail calls "forbidden"). Where it may deliver is limited
+# by the Mta* expressions below, keyed on this exact address.
+# It logs in with an APP PASSWORD, created/rotated by
+# bin/stalwart-relay-app-password, not set here: with Keycloak as the
+# directory (plan-oidc.ndjson), plain passwords are never checked and
+# can't be set. App passwords keep working while Keycloak is down.
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"ses-relay":{"@type":"User","name":"ses-relay","domainId":"#mail-domain","description":"SES inbound relay (Lambda) - machine account","permissions":{"@type":"Replace","enabledPermissions":{"authenticate":true,"emailSend":true},"disabledPermissions":{}}}}}
+# People and shared mailboxes: per instance.
+@include {{SGNL_INSTANCE_DIR}}/stalwart/mailboxes.ndjson
+
+# --- Submission policy ------------------------------------------------
+# Auth always required. The sender must match the logged-in account,
+# except for the relay account, which has to keep the original external
+# sender on relayed inbound mail.
+{"@type":"update","object":"MtaStageAuth","value":{"require":{"match":{},"else":"true"},"mustMatchSender":{"match":{"0":{"if":"authenticated_as == 'ses-relay@{{SGNL_DOMAIN}}'","then":"false"}},"else":"true"},"saslMechanisms":{"match":{"0":{"if":"is_tls","then":"[plain, login, oauthbearer]"}},"else":"false"}}}
+# Relaying (= delivering to non-local recipients) is for logged-in humans
+# only. The relay account can deliver to local mailboxes and nothing
+# else, so a leaked relay app password can't send mail out through SES.
+{"@type":"update","object":"MtaStageRcpt","value":{"allowRelaying":{"match":{"0":{"if":"authenticated_as == 'ses-relay@{{SGNL_DOMAIN}}'","then":"false"}},"else":"!is_empty(authenticated_as)"}}}
+# Run the spam filter on relayed inbound mail too (by default it skips
+# authenticated sessions). SPF/DMARC checks stay off for non-25 ports
+# (SenderAuth defaults); SES already ran those and the Lambda adds
+# X-SES-*-Verdict headers.
+{"@type":"update","object":"MtaStageData","value":{"enableSpamFilter":{"match":{"0":{"if":"authenticated_as == 'ses-relay@{{SGNL_DOMAIN}}'","then":"true"}},"else":"is_empty(authenticated_as)"}}}
+{"@type":"update","object":"SenderAuth","value":{"dkimSignDomain":{"match":{},"else":"false"}}}
+{"@type":"update","object":"MtaOutboundStrategy","value":{"route":{"match":{"0":{"if":"is_local_domain(rcpt_domain)","then":"'local'"}},"else":"'ses'"},"tls":{"match":{"0":{"if":"is_local_domain(rcpt_domain)","then":"'default'"}},"else":"'ses-starttls'"}}}
+
+# --- Auto-ban (defaults allow 100 failed logins per IP per day) ---------
+# 10 failed logins/hour -> 24h ban. Abuse = relay/recipient probing.
+{"@type":"update","object":"Security","value":{"authBanRate":{"count":10,"period":3600000},"authBanPeriod":86400000,"abuseBanRate":{"count":10,"period":3600000},"abuseBanPeriod":86400000,"scanBanPeriod":86400000,"loiterBanPeriod":3600000}}
+
+# --- HTTP behind kamal-proxy ----------------------------------------
+# Trust X-Forwarded-For (only kamal-proxy can reach :8080, it isn't
+# published) so auto-ban and rate limits see real client IPs, not the
+# proxy's.
+# usePermissiveCors: Bulwark's browser code calls JMAP on mail.sgnl
+# directly (cross-origin from inbox.sgnl). Stalwart only offers "all
+# origins"; acceptable because JMAP auth is a bearer token in the
+# Authorization header, and wildcard CORS never shares cookies.
+{"@type":"update","object":"Http","value":{"useXForwarded":true,"enableHsts":true,"usePermissiveCors":true}}
+
+# --- Web UI bundle: pinned release instead of "latest from GitHub" ------
+{"@type":"upsert","object":"Application","matchOn":["description"],"value":{"webui":{"description":"Stalwart Web Interface","resourceUrl":"https://github.com/stalwartlabs/webui/releases/download/v1.0.11/webui.zip","enabled":true,"urlPrefix":{"/admin":true,"/account":true}}}}
+
+{"@type":"update","object":"Authentication","value":{"passwordMinLength":14}}
+{"@type":"update","object":"SystemSettings","value":{"defaultHostname":"mail.{{SGNL_APPS_DOMAIN}}","defaultDomainId":"#mail-domain"}}

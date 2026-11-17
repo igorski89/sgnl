@@ -1,0 +1,77 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Bitwarden-compatible password vault. SQLite, no external DB.
+#
+# Login goes through Keycloak (SSO, Vaultwarden 1.35+; Authelia until
+# 2026-10-19). SSO replaces only the login step: the master password still
+# decrypts the vault locally, and Keycloak never sees it. SSO_ONLY: no email + master password login
+# form at all; accounts are created by the first SSO login
+# (SSO_SIGNUPS_ALLOWED), normal sign-up stays off.
+#
+# SSO_AUTH_ONLY_NOT_SESSION: Keycloak only for the login step, Vaultwarden
+# keeps its own session (no offline_access/refresh token).
+#
+# Accounts are linked by "<issuer>/<sub>" (table sso_users). Changing
+# SSO_AUTHORITY needs the same change in that table, or logins are refused
+# ("Existing SSO user with same email"); see instance/docs/PLAN-keycloak.md.
+#
+# No ADMIN_TOKEN: without it Vaultwarden disables the /admin panel
+# entirely, the right default for a public vault. To use it temporarily,
+# generate an Argon2 PHC hash with `docker run --rm -it
+# vaultwarden/server:1.37.4 /vaultwarden hash`, add ADMIN_TOKEN back as a
+# secret, deploy, do the task, then remove it and deploy again.
+service: sgnl-vaultwarden
+image: sgnl-vaultwarden
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-vaultwarden
+
+proxy:
+  ssl: true
+  host: vault.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 80
+  healthcheck:
+    path: /alive
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/vaultwarden/Dockerfile
+  context: docker/vaultwarden
+
+volumes:
+  - "sgnl_vaultwarden_data:/data"
+
+env:
+  secret:
+    - SSO_CLIENT_SECRET:KEYCLOAK_VAULTWARDEN_CLIENT_SECRET
+    - SMTP_PASSWORD:AWS_SES_SMTP_PASSWORD
+    - SMTP_USERNAME:AWS_SES_SMTP_USERNAME
+  clear:
+    DOMAIN: "https://vault.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    SIGNUPS_ALLOWED: "false"
+    INVITATIONS_ALLOWED: "false"
+    SHOW_PASSWORD_HINT: "false"
+    PASSWORD_HINTS_ALLOWED: "false"
+    # The email comes from the SSO login; changing it here would break the link.
+    EMAIL_CHANGE_ALLOWED: "false"
+    ENABLE_DB_WAL: "true"
+    SSO_ENABLED: "true"
+    SSO_ONLY: "true"
+    SSO_SIGNUPS_ALLOWED: "true"
+    SSO_SIGNUPS_MATCH_EMAIL: "true"
+    SSO_AUTH_ONLY_NOT_SESSION: "true"
+    SSO_AUTHORITY: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
+    SSO_CLIENT_ID: "vaultwarden"
+    SSO_SCOPES: "email profile"
+    SSO_PKCE: "true"
+    SMTP_HOST: "<%= ENV.fetch("SGNL_SMTP_HOST") %>"
+    # 587 + STARTTLS: Hetzner Cloud blocks outgoing 465 (and 25).
+    SMTP_PORT: "587"
+    SMTP_SECURITY: "starttls"
+    SMTP_FROM: "vault@<%= ENV.fetch("SGNL_DOMAIN") %>"

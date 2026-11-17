@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Kamal 2 has no `files:` for app containers (only for accessories), so
+# this uploads each service's config/secret files to /opt/sgnl/<name>/ on
+# its hosts before every container boot (setup, deploy, redeploy, app
+# boot). config/deploy.<name>.yml bind-mounts them read-only from there.
+#
+# Paths are relative to the service's directory in this repo. Modes are
+# kept as they are locally. Stalwart runs as the "stalwart" user, so its dir and files are
+# made world-readable - config.json holds no secrets.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+source lib/instance.sh
+
+case "${KAMAL_SERVICE:-}" in
+  sgnl-stalwart)
+    src=stalwart dest=stalwart dir_mode=755 world_readable=1
+    files=(config.json) ;;
+  sgnl-opencloud)
+    # Container runs as uid 1000: world-readable, no secrets in these.
+    src=opencloud dest=opencloud dir_mode=755 world_readable=1
+    files=(csp.yaml proxy.yaml) ;;
+  sgnl-dashy)
+    # Dashy runs as uid 1000: world-readable, no secrets in it. The tiles
+    # are this company's, so the file lives in instance/.
+    src=$SGNL_INSTANCE_DIR/dashy dest=dashy dir_mode=755 world_readable=1
+    files=(conf.yml) ;;
+  sgnl-collabora)
+    # Nothing to upload; make sure the WOPI proof key exists (once).
+    for host in ${KAMAL_HOSTS//,/ }; do
+      ssh "root@$host" 'set -e; install -d -m 755 /opt/sgnl/collabora
+        if [ ! -s /opt/sgnl/collabora/proof_key ]; then
+          openssl genrsa -traditional -out /opt/sgnl/collabora/proof_key 4096 2>/dev/null
+          chown 1001:1001 /opt/sgnl/collabora/proof_key; chmod 400 /opt/sgnl/collabora/proof_key
+          echo "pre-app-boot: generated Collabora WOPI proof key"
+        fi'
+    done
+    exit 0 ;;
+  *) exit 0 ;;
+esac
+
+for f in "${files[@]}"; do
+  [[ -s "$src/$f" ]] || { echo "pre-app-boot: missing $src/$f (see docs/DEPLOY.md)" >&2; exit 1; }
+done
+
+# Fill the instance values ({{SGNL_*}}, bin/sgnl-render) into a private
+# copy; that copy is what gets uploaded. Modes are kept.
+out=$(mktemp -d)
+trap 'rm -rf "${out:?}"' EXIT
+for f in "${files[@]}"; do
+  bin/sgnl-render "$src/$f" > "$out/$f"
+  chmod "$(stat -f %Lp "$src/$f")" "$out/$f"
+done
+
+# bin/sgnl-config-dump: print what would be uploaded, upload nothing.
+if [[ -n ${SGNL_HOOK_DUMP:-} ]]; then
+  for f in "${files[@]}"; do printf "==> /opt/sgnl/%s/%s\n" "$dest" "$f"; cat "$out/$f"; done
+  exit 0
+fi
+
+dest=/opt/sgnl/$dest
+for host in ${KAMAL_HOSTS//,/ }; do
+  echo "pre-app-boot: uploading ${#files[@]} file(s) to $host:$dest"
+  # COPYFILE_DISABLE: no macOS ._ files. --no-same-owner: owned by root.
+  COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$out" -cf - "${files[@]}" |
+    ssh "root@$host" "set -e; install -d -m $dir_mode $dest
+      tar -xf - --no-same-owner -C $dest
+      ${world_readable:+chmod -R a+rX $dest}"
+done

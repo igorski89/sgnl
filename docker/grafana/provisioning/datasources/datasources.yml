@@ -1,0 +1,31 @@
+# Org 1 (Main Org.): everyone in sgnl_users, metrics only. The Logs org
+# (admins only) is not provisioned from files: provisioning can't create
+# orgs and Grafana won't start if a file names a missing one, so
+# bin/sgnl-grafana-setup creates it and applies ../../logs-org/.
+#
+# uid "victoriametrics" is the contract with cotenant's dashboards
+# (instance/docs/PLAN-monitoring.md, "Conventions"); uids are per org. Not
+# editable in the UI: change them here.
+apiVersion: 1
+
+datasources:
+  - name: VictoriaMetrics
+    uid: victoriametrics
+    orgId: 1
+    type: prometheus
+    access: proxy
+    url: http://sgnl-victoriametrics:8428
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+  - name: Alertmanager
+    uid: alertmanager
+    orgId: 1
+    type: alertmanager
+    access: proxy
+    url: http://sgnl-alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

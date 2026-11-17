@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Suspend a person everywhere, reversibly: sabbatical, suspected
+# compromise, investigation. Nothing is deleted. Groups, teams, mailbox,
+# repos and settings stay as they are, and mail keeps arriving.
+# See docs/USERS.md ("Suspend / offboard / delete").
+#
+#   bin/sgnl-user-suspend <user>            cut off all access
+#   bin/sgnl-user-suspend --resume <user>   give it back
+#   bin/sgnl-user-suspend --status <user>   show the state in each system
+#
+# What "access" means here, and why four places:
+#   1. Keycloak: the account is disabled and all its sessions end,
+#      including refresh/offline tokens (bin/sgnl-kc disable). No new
+#      logins to any SSO app; only an access token already handed to an
+#      app stays valid until it expires (5 min). Nobody else is affected.
+#   2. Stalwart: the "authenticate" permission is disabled on the
+#      account, which also stops mail app passwords (IMAP/SMTP). They're
+#      checked by Stalwart itself, not Keycloak.
+#   3. Forgejo: "prohibit login", which also stops git access tokens.
+#      They don't go through Keycloak either.
+#   4. OpenCloud: the account is disabled (accountEnabled=false), which
+#      also stops OpenCloud app tokens (WebDAV); those never touch Keycloak.
+# Mail apps that are connected right now stay connected until they
+# reconnect. Restarting Stalwart cuts them immediately, for everyone.
+#
+# Idempotent: re-running finishes a half-done suspend or resume. Each
+# step runs even if an earlier one failed, and the exit code says whether
+# all of them worked.
+set -uo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+cd "$(dirname "$0")/.."
+
+DOMAIN=$SGNL_DOMAIN
+FORGEJO=https://git.$SGNL_APPS_DOMAIN
+OPENCLOUD=https://drive.$SGNL_APPS_DOMAIN
+
+mode=suspend
+# --kill-sessions was needed with Authelia; Keycloak's disable always ends sessions.
+[[ ${1:-} == --kill-sessions ]] && shift
+case ${1:-} in
+  --resume) mode=resume; shift ;;
+  --status) mode=status; shift ;;
+  -*|"") sed -n '2,10p' "$0"; exit 1 ;;
+esac
+user=${1:-}
+[[ $user =~ ^[a-z][a-z0-9._-]{1,30}$ ]] || { echo "usage: $0 [--resume|--status] <username>" >&2; exit 1; }
+[[ $user != "$SGNL_ADMIN_USER" || ${SGNL_ALLOW_SELF:-} == 1 ]] || {
+  echo "refusing to suspend $SGNL_ADMIN_USER (the first admin) without SGNL_ALLOW_SELF=1" >&2; exit 1; }
+
+kc() { "$(dirname "$0")/sgnl-secret" "$1"; }
+failed=0
+ok()   { echo "  ✓ $*"; }
+warn() { echo "  ✗ $*"; failed=1; }
+
+# --- 1. Keycloak ---------------------------------------------------------
+keycloak_step() {
+  echo "Keycloak (every SSO login)"
+  local u; u=$(bin/sgnl-kc show "$user" 2>&1) || { warn "$u"; return; }
+  local enabled; enabled=$(jq -r .enabled <<<"$u")
+  case $mode:$enabled in
+    status:*) echo "  enabled: $enabled, groups: $(jq -r '.groups | join(",")' <<<"$u"), sessions: $(jq -r .sessions <<<"$u")" ;;
+    suspend:false) ok "already disabled" ;;
+    resume:true) ok "already enabled" ;;
+    suspend:true) bin/sgnl-kc disable "$user" >/dev/null &&
+      ok "disabled, all sessions and refresh tokens ended" || warn "disable failed" ;;
+    resume:false) bin/sgnl-kc enable "$user" >/dev/null && ok "enabled" || warn "enable failed" ;;
+  esac
+}
+
+# --- 2. Stalwart ----------------------------------------------------------
+# Only accounts on the default ("Inherit") permissions are touched, so
+# resume can restore them exactly. Suspended = Merge with authenticate
+# disabled and nothing else.
+SUSPENDED_PERMS='{"@type":"Merge","enabledPermissions":{},"disabledPermissions":{"authenticate":true}}'
+stalwart_step() {
+  echo "Stalwart (mail, incl. app passwords)"
+  local admin; admin=$(kc stalwart-recovery-admin)
+  export STALWART_URL=https://mail.$SGNL_APPS_DOMAIN STALWART_USER=${admin%%:*} STALWART_PASSWORD=${admin#*:}
+  local id; id=$(stalwart-cli query Account 2>/dev/null | awk -v a="$user@$DOMAIN" '$2==a {print $1}')
+  [[ -n $id ]] || { echo "  - no mailbox $user@$DOMAIN, skipped"; return; }
+  local perms; perms=$(stalwart-cli get Account "$id" --json | jq -c '.permissions')
+  local state=other
+  [[ $(jq -r '."@type"' <<<"$perms") == Inherit ]] && state=active
+  jq -e --argjson s "$SUSPENDED_PERMS" '. == $s' <<<"$perms" >/dev/null && state=suspended
+  case $mode:$state in
+    status:*) echo "  permissions: $perms ($state)" ;;
+    suspend:suspended|resume:active) ok "already $state" ;;
+    suspend:active)
+      stalwart-cli update Account "$id" --json "{\"permissions\":$SUSPENDED_PERMS}" >/dev/null &&
+        ok "logins blocked (web, IMAP, SMTP, app passwords); mail still arrives" || warn "update failed" ;;
+    resume:suspended)
+      stalwart-cli update Account "$id" --json '{"permissions":{"@type":"Inherit"}}' >/dev/null &&
+        ok "logins allowed again" || warn "update failed" ;;
+    *) warn "custom permissions on this account, not touching them: $perms" ;;
+  esac
+  # App passwords: listed so they can be rotated after a compromise.
+  # Listing needs the account to be allowed to authenticate, so only when active.
+  if [[ $mode != suspend ]] && STALWART_USER="$user@$DOMAIN%${admin%%:*}" stalwart-cli query AppPassword >/dev/null 2>&1; then
+    STALWART_USER="$user@$DOMAIN%${admin%%:*}" stalwart-cli query AppPassword 2>/dev/null | sed 's/^/    /'
+  fi
+  unset STALWART_PASSWORD
+}
+
+# --- 3. Forgejo -----------------------------------------------------------
+forgejo_step() {
+  echo "Forgejo (web + git tokens)"
+  local token; token=$(kc forgejo-admin-token) || { warn "no Keychain $SGNL_PREFIX-forgejo-admin-token"; return; }
+  api() { curl -fsS -H "Authorization: token $token" -H 'Content-Type: application/json' "$@"; }
+  local u; u=$(api "$FORGEJO/api/v1/admin/users?limit=50" 2>/dev/null |
+    jq -c --arg u "$user" '.[] | select(.login==$u) | {login_name, source_id, prohibit_login}')
+  [[ -n $u ]] || { echo "  - no Forgejo account (never logged in), skipped"; return; }
+  local want
+  case $mode in
+    status) echo "  prohibit_login: $(jq -r .prohibit_login <<<"$u")"; return ;;
+    suspend) want=true ;;
+    resume) want=false ;;
+  esac
+  [[ $(jq -r .prohibit_login <<<"$u") == "$want" ]] && { ok "already prohibit_login=$want"; return; }
+  # The admin edit endpoint wants the account's login source back as-is.
+  api -X PATCH "$FORGEJO/api/v1/admin/users/$user" \
+    -d "$(jq -c --argjson p "$want" '{login_name, source_id, prohibit_login:$p}' <<<"$u")" >/dev/null &&
+    ok "prohibit_login=$want$([[ $want == true ]] && echo ' (web sessions and git tokens refused)')" || warn "update failed"
+}
+
+# --- 4. OpenCloud -----------------------------------------------------------
+# Graph API as OpenCloud's local admin, with a 5-minute app token created
+# on the server by the CLI (auth-app service); nothing stored anywhere.
+opencloud_step() {
+  echo "OpenCloud (files: apps, WebDAV app tokens)"
+  local tok; tok=$(ssh root@$SGNL_HOST 'docker exec $(docker ps -qf label=service=sgnl-opencloud | head -1) opencloud auth-app create --user-name admin --expiration 5m 2>/dev/null' | sed -n 's/^ *token: *//p')
+  [[ -n $tok ]] || { warn "could not create an admin app token (is OpenCloud running?)"; return; }
+  ocapi() { curl -fsS -u "admin:$tok" -H 'Content-Type: application/json' "$@"; }
+  local u; u=$(ocapi "$OPENCLOUD/graph/v1.0/users" 2>/dev/null |
+    jq -c --arg u "$user" '.value[] | select(.onPremisesSamAccountName==$u) | {id, accountEnabled}')
+  [[ -n $u ]] || { echo "  - no OpenCloud account (never logged in), skipped"; return; }
+  local enabled; enabled=$(jq -r 'if .accountEnabled == false then "false" else "true" end' <<<"$u")  # not `// true`: jq's // treats false as missing
+  local want
+  case $mode in
+    status) echo "  accountEnabled: $enabled"; return ;;
+    suspend) want=false ;;
+    resume) want=true ;;
+  esac
+  [[ $enabled == "$want" ]] && { ok "already accountEnabled=$want"; return; }
+  ocapi -X PATCH "$OPENCLOUD/graph/v1.0/users/$(jq -r .id <<<"$u")" -d "{\"accountEnabled\":$want}" >/dev/null &&
+    ok "accountEnabled=$want$([[ $want == false ]] && echo ' (apps and app tokens refused; files and shares untouched)')" || warn "update failed"
+}
+
+echo "== $mode $user"
+keycloak_step
+stalwart_step
+forgejo_step
+opencloud_step
+
+if [[ $mode == resume ]]; then
+  cat <<EOF
+
+If this was a suspected compromise, before handing access back:
+  - new password + passkey: remove their credentials in Keycloak, then
+    bin/sgnl-kc setup-email $user (to a mailbox only they control)
+  - they delete old mail app passwords (mail.sgnl.../account -> Credentials) and git tokens
+    (Forgejo -> Settings -> Applications) and create new ones
+EOF
+fi
+exit $failed

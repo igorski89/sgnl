@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Installs (or updates) the nightly backup on the host: script, systemd
+# units, and the two root-only env files built from the Keychain.
+# Idempotent; re-run after changing host/backup/* or rotating a key.
+# See docs/BACKUPS.md.
+#
+#   bin/sgnl-backup-install          # install/update, enable the timer
+#   bin/sgnl-backup-install --run    # ...and run a backup right away
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+source lib/instance.sh
+HOST=root@$SGNL_HOST
+REPO="s3:https://$SGNL_R2_ENDPOINT/$SGNL_BACKUP_BUCKET"
+ALERT_TO=$SGNL_ALERT_EMAIL # same as the AWS alarms (aws/terraform.tfvars); not on our own mail server
+
+kc() { bin/sgnl-secret "$1"; }
+
+# docker --env-file: KEY=value, taken literally (no quoting).
+restic_env=$(printf 'RESTIC_REPOSITORY=%s\nRESTIC_PASSWORD=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n' \
+  "$REPO" "$(kc restic-password)" "$(kc backup-s3-access-key-id)" "$(kc backup-s3-secret-access-key)")
+# Sourced by bash: %q-quoted.
+notify_env=$(printf 'ALERT_TO=%q\nSES_SMTP_USERNAME=%q\nSES_SMTP_PASSWORD=%q\n' \
+  "$ALERT_TO" "$(kc ses-smtp-username)" "$(kc ses-smtp-password)")
+
+# Instance values ({{SGNL_*}}) filled into a private copy, which is uploaded.
+render=$(mktemp -d); trap 'rm -rf "${render:?}"' EXIT
+for f in sgnl-backup.sh sgnl-backup.service sgnl-backup.timer; do bin/sgnl-render "host/backup/$f" > "$render/$f"; done
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$render" -cf - \
+  sgnl-backup.sh sgnl-backup.service sgnl-backup.timer |
+  ssh "$HOST" 'set -e
+    install -d -m 700 /opt/sgnl/backup /opt/sgnl/backup/staging /opt/sgnl/backup/cache
+    tar -xf - --no-same-owner -C /opt/sgnl/backup
+    chmod 700 /opt/sgnl/backup/sgnl-backup.sh
+    mv /opt/sgnl/backup/sgnl-backup.service /opt/sgnl/backup/sgnl-backup.timer /etc/systemd/system/'
+
+# Secrets over stdin, never on a command line.
+echo "$restic_env" | ssh "$HOST" 'umask 077; cat > /opt/sgnl/backup/restic.env'
+echo "$notify_env" | ssh "$HOST" 'umask 077; cat > /opt/sgnl/backup/notify.env'
+
+ssh "$HOST" 'set -e
+  docker pull -q restic/restic:0.18.0 >/dev/null
+  systemctl daemon-reload
+  systemctl enable --now sgnl-backup.timer >/dev/null
+  systemctl list-timers sgnl-backup.timer --no-pager | head -2'
+
+if [[ ${1:-} == --run ]]; then
+  ssh "$HOST" 'systemctl start sgnl-backup.service; journalctl -u sgnl-backup -n 40 --no-pager -o cat'
+fi

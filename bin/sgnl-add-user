@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Onboard a person: Keycloak invite + Stalwart mailbox. Nothing secret is
+# created or handed over: the person sets their own password and passkey.
+#
+#   bin/sgnl-add-user anna "Anna Example" anna@personal.example
+#
+# What it does (docs/USERS.md has the whole flow, incl. the person's side):
+#   1. Adds the <user> mailbox to instance/stalwart/mailboxes.ndjson and applies the plan
+#      (the mailbox exists before their first login, so mail to them
+#      arrives from day one).
+#   2. bin/sgnl-kc invite: Keycloak user <user>, email = the personal
+#      address, group sgnl_invited only; set-up email (password + passkey,
+#      valid 72 h) to that personal address.
+# Afterwards, once they've set password + passkey:
+#   bin/sgnl-kc finish-invite <user> [admins developers forgejo_users ...]
+# which switches the email to <user>@example.com and opens the apps.
+# It does not commit: review the diff and commit yourself.
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+cd "$(dirname "$0")/.."
+
+user=${1:-}; name=${2:-}; personal=${3:-}
+[[ $user =~ ^[a-z][a-z0-9._-]{1,30}$ && -n $name && $personal == *@* ]] ||
+  { echo "usage: $0 <username> \"<Display Name>\" <personal-email>" >&2; exit 1; }
+[[ $name != *"'"* && $name != *'"'* ]] || { echo "display name must not contain quotes" >&2; exit 1; }
+DOMAIN=$SGNL_DOMAIN
+PLAN=$SGNL_INSTANCE_DIR/stalwart/mailboxes.ndjson
+
+bin/sgnl-kc list | cut -f1 | grep -qx "$user" && { echo "$user already exists in Keycloak" >&2; exit 1; }
+
+echo "1/2 Stalwart mailbox"
+if grep -q "\"value\":{\"${user}\":" "$PLAN"; then
+  echo "  already in $PLAN"
+else
+  line="{\"@type\":\"upsert\",\"object\":\"Account\",\"matchOn\":[\"name\",\"domainId\"],\"value\":{\"${user}\":{\"@type\":\"User\",\"name\":\"${user}\",\"domainId\":\"#mail-domain\",\"description\":\"${name}\"}}}"
+  python3 - "$PLAN" "$line" <<'PY'
+import sys
+path, line = sys.argv[1], sys.argv[2]
+lines = open(path).read().split("\n")
+# after the last mailbox
+idx = max(i for i, l in enumerate(lines) if '"object":"Account"' in l and l.startswith("{"))
+lines.insert(idx + 1, line)
+open(path, "w").write("\n".join(lines))
+PY
+fi
+bin/stalwart-apply | tail -1
+
+echo "2/2 Keycloak invite"
+bin/sgnl-kc invite "$user" "$name" "$personal"
+
+cat <<EOF
+
+Done: $user (mailbox $user@$DOMAIN). Tell them on another channel to expect
+an email from "Secrétariat Général" at $personal, and to say when they're
+done. Then: bin/sgnl-kc finish-invite $user [groups...]
+Commit $PLAN. Their first steps: docs/USERS.md "Onboarding - the person's side".
+EOF

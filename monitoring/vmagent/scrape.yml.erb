@@ -1,0 +1,132 @@
+<% cot = ENV.fetch("SGNL_COTENANT", ""); tenants = [cot, "sgnl"].reject(&:empty?); inc = ->(f, ind) { p = File.join(ENV.fetch("SGNL_INSTANCE_DIR", "instance"), f); File.exist?(p) ? File.read(p).gsub(/^(?=.)/, " " * ind) : "" } %># vmagent scrape config (config/deploy.monitoring.yml, accessory vmagent).
+# Re-read every minute; uploaded on `kamal accessory reboot vmagent`.
+#
+# Two kinds of targets:
+#   1. Fixed: the monitoring stack itself and the two exporters.
+#   2. Discovered: any container on this host with the Docker label
+#      `metrics.port` (set in each app's deploy.yml). Optional labels:
+#      `metrics.path` (default /metrics), `metrics.job` (overrides job).
+#
+# Labels every target gets (apps never set these themselves,
+# instance/docs/PLAN-monitoring.md "Conventions"):
+#   tenant    <%= tenants.join(" | ") %> (from the Kamal service name)
+#   service   Kamal's `service` label
+#   role      Kamal's `role` label (app roles only; accessories have none)
+#   instance  container name, without the deploy-specific suffix
+#   job       names the instance maps explicitly (instance/monitoring/
+#             scrape-jobs.yml), else <service>[-<role>], `_` -> `-`
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: victoriametrics
+    static_configs:
+      - targets: ["sgnl-victoriametrics:8428"]
+        labels: { tenant: sgnl, service: sgnl-victoriametrics }
+  - job_name: vmagent
+    static_configs:
+      - targets: ["sgnl-vmagent:8429"]
+        labels: { tenant: sgnl, service: sgnl-vmagent }
+  - job_name: vmalert
+    static_configs:
+      - targets: ["sgnl-vmalert:8880"]
+        labels: { tenant: sgnl, service: sgnl-vmalert }
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["sgnl-alertmanager:9093"]
+        labels: { tenant: sgnl, service: sgnl-alertmanager }
+  - job_name: victorialogs
+    static_configs:
+      - targets: ["sgnl-victorialogs:9428"]
+        labels: { tenant: sgnl, service: sgnl-victorialogs }
+  - job_name: vector
+    static_configs:
+      - targets: ["sgnl-vector:9598"]
+        labels: { tenant: sgnl, service: sgnl-vector }
+  - job_name: vmalert-logs
+    static_configs:
+      - targets: ["sgnl-vmalert-logs:8880"]
+        labels: { tenant: sgnl, service: sgnl-vmalert-logs }
+  - job_name: node
+    static_configs:
+      - targets: ["sgnl-node-exporter:9100"]
+        labels: { tenant: sgnl, service: sgnl-node-exporter, instance: host }
+
+  # Every container (both tenants). cAdvisor's own labels:
+  # name = container name, container_label_service/_role = Kamal labels.
+  - job_name: cadvisor
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["sgnl-cadvisor:8080"]
+        labels: { tenant: sgnl, service: sgnl-cadvisor }
+    metric_relabel_configs:
+      # The root cgroup and non-container series: keep only containers.
+      - source_labels: [name]
+        regex: ""
+        action: drop
+      - source_labels: [container_label_service]
+        target_label: container_service
+      - source_labels: [container_label_role]
+        target_label: container_role
+      - source_labels: [container_label_service]
+        regex: "(<%= tenants.join("|") %>).*"
+        target_label: container_tenant
+        replacement: "$1"
+      - regex: "container_label_(service|role)|id|image"
+        action: labeldrop
+
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        filters:
+          - name: label
+            values: ["metrics.port"]
+    relabel_configs:
+      # One target per container, on the kamal network, at metrics.port.
+      # (vmagent's docker_sd has no __meta_docker_network_name here; the
+      # container's network mode is the network Kamal started it on.
+      # Per-tenant networks, instance/docs/PLAN-monitoring.md section 8, would add
+      # them to this regex and vmagent to those networks.)
+      - source_labels: [__meta_docker_container_network_mode]
+        regex: kamal
+        action: keep
+      - source_labels: [__meta_docker_network_ip, __meta_docker_container_label_metrics_port]
+        separator: ":"
+        target_label: __address__
+      - source_labels: [__meta_docker_container_label_metrics_path]
+        regex: "(.+)"
+        target_label: __metrics_path__
+      # Marker: these targets came from discovery (job is rewritten below).
+      - target_label: sd
+        replacement: docker
+      - source_labels: [__meta_docker_container_label_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_role]
+        target_label: role
+      - source_labels: [__meta_docker_container_label_service]
+        regex: "(<%= tenants.join("|") %>).*"
+        target_label: tenant
+        replacement: "$1"
+      # instance: container name minus Kamal's version suffix
+      # (app-worker-<sha>[_...] -> app-worker), so series survive deploys.
+      - source_labels: [__meta_docker_container_name]
+        regex: "/?(.+?)(-[0-9a-f]{40}.*)?"
+        target_label: instance
+      # job, default: <service>[-<role>] with _ -> -
+      - source_labels: [service]
+        target_label: job
+      - source_labels: [service, role]
+        regex: "(.+);(.+)"
+        separator: ";"
+        target_label: job
+        replacement: "$1-$2"
+      - source_labels: [job]
+        regex: "_"
+        target_label: job
+        replacement: "-"
+        action: replace_all
+<%= inc.("monitoring/scrape-jobs.yml", 6) %>      # An explicit metrics.job label wins.
+      - source_labels: [__meta_docker_container_label_metrics_job]
+        regex: "(.+)"
+        target_label: job

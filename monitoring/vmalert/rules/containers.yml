@@ -1,0 +1,32 @@
+# Containers, both tenants (cAdvisor, job="cadvisor"), and every scraped
+# /metrics target (job != cadvisor). Container labels: name,
+# container_service, container_role, container_tenant.
+groups:
+  - name: containers
+    rules:
+      # The same container name started 3+ times in 15 minutes. A deploy
+      # starts a new name, so deploys don't count.
+      - alert: ContainerRestartLoop
+        expr: changes(container_start_time_seconds{job="cadvisor",name!=""}[15m]) >= 3
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.name }} restarted {{ $value }} times in 15 minutes"
+
+      # Only for containers with a --memory limit (limit > 0).
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          container_memory_working_set_bytes{job="cadvisor",name!=""}
+            / (container_spec_memory_limit_bytes{job="cadvisor",name!=""} > 0) > 0.90
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.name }} uses {{ $value | humanizePercentage }} of its memory limit"
+
+      # A /metrics endpoint that stopped answering. Component rules may
+      # have their own, more specific *Down alert; this one is the floor.
+      - alert: TargetDown
+        expr: up == 0
+        for: 3m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} ({{ $labels.instance }}) /metrics not reachable for 3 minutes"

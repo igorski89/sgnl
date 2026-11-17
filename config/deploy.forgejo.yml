@@ -1,0 +1,100 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Git forge (repos, issues, pull requests, LFS). Login only through
+# Keycloak (OIDC; the auth source is still named "authelia", see
+# bin/sgnl-forgejo-setup); accounts are created on first login and their
+# admin flag and teams follow groups at every login (docs/USERS.md).
+# HTTPS only: no SSH (host port 22 is the server's own sshd). git uses
+# personal access tokens.
+#
+# Configuration is entirely FORGEJO__section__KEY env vars, which the
+# image's entrypoint writes into /var/lib/gitea/custom/conf/app.ini on
+# every start. Data (repos, LFS, SQLite) lives in sgnl_forgejo_data and
+# is in the nightly backup (docs/BACKUPS.md).
+#
+# No zero-downtime boot: two Forgejo containers can't share the volume
+# (the second dies with "unable to lock level db at
+# /var/lib/gitea/queues/common"), so `kamal app boot` fails its health
+# check and keeps the old container. To only restart (e.g. after
+# bin/sgnl-forgejo-setup auth): `docker restart` the running container
+# (~10 s down). New image or env: `kamal app stop` then `kamal deploy`.
+service: sgnl-forgejo
+image: sgnl-forgejo
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-forgejo
+
+proxy:
+  ssl: true
+  host: git.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 3000
+  healthcheck:
+    path: /api/healthz
+  # Large git pushes and LFS uploads.
+  buffering:
+    requests: false
+    responses: false
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/forgejo/Dockerfile
+  context: docker/forgejo
+
+volumes:
+  - "sgnl_forgejo_data:/var/lib/gitea"
+
+env:
+  secret:
+    - FORGEJO__security__SECRET_KEY:FORGEJO_SECRET_KEY
+    - FORGEJO__security__INTERNAL_TOKEN:FORGEJO_INTERNAL_TOKEN
+    - FORGEJO__server__LFS_JWT_SECRET:FORGEJO_LFS_JWT_SECRET
+    - FORGEJO__oauth2__JWT_SECRET:FORGEJO_OAUTH2_JWT_SECRET
+    - FORGEJO__mailer__USER:AWS_SES_SMTP_USERNAME
+    - FORGEJO__mailer__PASSWD:AWS_SES_SMTP_PASSWORD
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    FORGEJO__DEFAULT__APP_NAME: "SGNL Git"
+    FORGEJO__security__INSTALL_LOCK: "true"
+    FORGEJO__database__DB_TYPE: "sqlite3"
+    FORGEJO__database__PATH: "/var/lib/gitea/data/forgejo.db"
+    FORGEJO__server__DOMAIN: "git.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    FORGEJO__server__ROOT_URL: "https://git.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/"
+    FORGEJO__server__HTTP_PORT: "3000"
+    FORGEJO__server__DISABLE_SSH: "true"
+    FORGEJO__server__START_SSH_SERVER: "false"
+    FORGEJO__server__LFS_START_SERVER: "true"
+    # LFS on the local disk, next to the repos (same volume, same backup).
+    FORGEJO__lfs__PATH: "/var/lib/gitea/data/lfs"
+    # Accounts only via SSO: no sign-up form, no local password form.
+    FORGEJO__service__DISABLE_REGISTRATION: "false"
+    FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION: "true"
+    FORGEJO__service__SHOW_REGISTRATION_BUTTON: "false"
+    FORGEJO__service__ENABLE_INTERNAL_SIGNIN: "false"
+    FORGEJO__service__REQUIRE_SIGNIN_VIEW: "true"
+    FORGEJO__service__DEFAULT_KEEP_EMAIL_PRIVATE: "true"
+    FORGEJO__service__DEFAULT_ALLOW_CREATE_ORGANIZATION: "false"
+    FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION: "true"
+    # "email" = local part of the email: alice@example.com -> alice,
+    # same name as the mailbox and Keycloak.
+    FORGEJO__oauth2_client__USERNAME: "email"
+    FORGEJO__oauth2_client__ACCOUNT_LINKING: "disabled"
+    FORGEJO__oauth2_client__REGISTER_EMAIL_CONFIRM: "false"
+    FORGEJO__oauth2_client__UPDATE_AVATAR: "false"
+    FORGEJO__repository__DEFAULT_PRIVATE: "private"
+    FORGEJO__repository__DEFAULT_BRANCH: "main"
+    FORGEJO__openid__ENABLE_OPENID_SIGNIN: "false"
+    FORGEJO__openid__ENABLE_OPENID_SIGNUP: "false"
+    FORGEJO__actions__ENABLED: "false"
+    FORGEJO__mailer__ENABLED: "true"
+    FORGEJO__mailer__PROTOCOL: "smtp+starttls"
+    FORGEJO__mailer__SMTP_ADDR: "<%= ENV.fetch("SGNL_SMTP_HOST") %>"
+    FORGEJO__mailer__SMTP_PORT: "587"
+    FORGEJO__mailer__FROM: "SGNL Git <git@<%= ENV.fetch("SGNL_DOMAIN") %>>"
+    FORGEJO__log__LEVEL: "Info"
+    FORGEJO__cron__ENABLED: "true"

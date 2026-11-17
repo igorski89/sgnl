@@ -1,0 +1,13 @@
+# OpenCloud roles from the OIDC groups claim (Keycloak groups),
+# re-evaluated at every login (PROXY_ROLE_ASSIGNMENT_DRIVER=oidc). First
+# match wins, so admins before sgnl_users. Someone in neither group can't
+# log in.
+role_assignment:
+  driver: oidc
+  oidc_role_mapper:
+    role_claim: groups
+    role_mapping:
+      - role_name: admin
+        claim_value: admins
+      - role_name: user
+        claim_value: sgnl_users

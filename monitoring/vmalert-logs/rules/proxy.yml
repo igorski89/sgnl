@@ -1,0 +1,17 @@
+# Log rules (vmalert-logs, LogsQL against VictoriaLogs; config/
+# deploy.monitoring.yml). Each rule counts matching lines over the
+# group's interval; the `filter` pipe is the threshold. cotenant's log rules
+# are its own: /root/cotenant-monitoring/log-rules/*.yml.
+groups:
+  - name: proxy
+    type: vlogs
+    interval: 5m
+    rules:
+      # Every app, both tenants: kamal-proxy logs each request (vector.yaml
+      # parses it into http.*). A few 5xx can be one client's bad luck;
+      # ten in five minutes is a broken app.
+      - alert: ProxyServerErrors
+        expr: 'service:"kamal-proxy" http.status:>=500 | stats by (http.service) count() as errors | filter errors:>=10 | rename http.service as upstream'
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.upstream }}: {{ $value }} responses with 5xx in 5 min (Grafana > Logs org > Explore: service:kamal-proxy http.status:>=500)"

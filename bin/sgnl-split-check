@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Lists every place outside the instance that names this instance: each
+# value in $SGNL_INSTANCE_DIR/sgnl.env, the extra patterns in
+# $SGNL_INSTANCE_DIR/split-check-patterns.txt (people, account IDs: one
+# PCRE per line, # comments), any IPv4 address and any email address
+# that isn't an example one. Nothing here names a real value, so the
+# check also scans itself. Exit 0 with "clean" when nothing matches.
+#
+#   bin/sgnl-split-check            # all hits, in this repo's tracked files
+#   bin/sgnl-split-check --count    # hits per file
+#   bin/sgnl-split-check <dir>      # every file under <dir> instead (no git)
+set -uo pipefail
+cd "$(dirname "$0")/.."
+source lib/instance.sh
+
+pats=()
+# Instance values (not the generic ones: time zone, AWS SMTP host).
+while IFS='=' read -r k _; do
+  [[ $k =~ ^SGNL_[A-Z0-9_]+$ ]] || continue
+  case $k in SGNL_TZ|SGNL_SMTP_HOST) continue ;; esac
+  v=${!k}; [[ ${#v} -ge 3 ]] || continue
+  pats+=("\\b$(sed 's/[][\.*^$+?(){}|/]/\\&/g' <<<"$v")\\b")
+done < "$SGNL_INSTANCE_DIR/sgnl.env"
+pats+=("${SGNL_R2_ENDPOINT%%.*}")
+extra=$SGNL_INSTANCE_DIR/split-check-patterns.txt
+[[ -f $extra ]] && while IFS= read -r l; do
+  [[ -z $l || $l == \#* ]] || pats+=("$l")
+done < "$extra"
+pats+=(
+  # Any IPv4 address except documentation (203.0.113.x), loopback,
+  # private ranges, 0.0.0.0 and version numbers (a.b.c.d.e).
+  '(?<![\d.])(?!203\.0\.113\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0)(\d{1,3}\.){3}\d{1,3}(?![\d.])'
+  # Any email address except example ones.
+  '[A-Za-z0-9._%+-]+@(?!example\.com|personal\.example|localhost)[A-Za-z0-9.-]+\.[a-z]{2,}'
+)
+args=(); for p in "${pats[@]}"; do args+=(-e "$p"); done
+
+flag=-n; [[ ${1:-} == --count ]] && flag=-c
+if [[ -n ${1:-} && $1 != --count ]]; then
+  # A plain directory (an export): every file, binary ones included.
+  hits=$(cd "$1" && git grep --no-index -n -P -i -a "${args[@]}" -- . ':!instance' ':!.git')
+else
+  hits=$(git grep $flag -P -i "${args[@]}" -- . ':!instance')
+fi
+if [[ -n $hits ]]; then
+  [[ $flag == -c ]] && hits=$(sort -t: -k2 -rn <<<"$hits")
+  echo "$hits"; exit 1
+fi
+echo "clean: nothing instance-specific outside the instance"

@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Makes the SGNL recovery sheet: docs/instance-sheet.html filled in with
+the restic password and R2 key from the Keychain, as a password-protected
+PDF (AES-256). Opens with a double-click anywhere (Preview, iPhone, any
+browser); Preview asks for the password. Run it in your own terminal: it
+asks for the password twice (hidden) and hands it to qpdf over stdin,
+never on a command line.
+
+  bin/sgnl-recovery-sheet ~/Desktop/sgnl-recovery-sheet.pdf
+
+The unprotected PDF exists only for a moment in a private temp dir and is
+overwritten and deleted right after. Upload the result wherever you like
+(Google Drive, iCloud Drive). Re-run after changing the restic password
+or the R2 key. Needs qpdf (brew install qpdf) and weasyprint.
+"""
+import datetime, getpass, html, os, re, shutil, subprocess, sys, tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402  (instance/sgnl.env)
+I = instance.load()
+REPOSITORY = f"s3:https://{I['SGNL_R2_ENDPOINT']}/{I['SGNL_BACKUP_BUCKET']}"
+
+
+def kc(key):
+    r = subprocess.run([os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgnl-secret"), key], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(r.stderr.strip())
+    return r.stdout
+
+
+def shell_single_quoted(v):
+    # The values go inside '...' in the sheet's commands.
+    return v.replace("'", "'\\''")
+
+
+def main():
+    if len(sys.argv) != 2 or not sys.argv[1].endswith(".pdf"):
+        sys.exit(__doc__)
+    out = os.path.abspath(os.path.expanduser(sys.argv[1]))
+    if os.path.exists(out):
+        sys.exit(f"{out} exists; move it away first")
+    if not shutil.which("qpdf"):
+        sys.exit("qpdf not found: brew install qpdf")
+
+    values = {
+        **{k: v for k, v in I.items()},
+        "REPOSITORY": REPOSITORY,
+        "R2_ID": kc("backup-s3-access-key-id"),
+        "R2_SECRET": kc("backup-s3-secret-access-key"),
+        "RESTIC_PASSWORD": kc("restic-password"),
+        "DATE": datetime.date.today().isoformat(),
+        "COMMIT": subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                 capture_output=True, text=True).stdout.strip(),
+    }
+    page = open(os.path.join(ROOT, "docs/instance-sheet.html")).read()
+    for k, v in values.items():
+        page = page.replace("{{" + k + "}}", html.escape(shell_single_quoted(v)))
+    left = re.findall(r"\{\{[A-Z0-9_]+\}\}", page)
+    if left:
+        sys.exit("template has unfilled fields: " + ", ".join(sorted(set(left))))
+
+    pw = getpass.getpass("Password for the PDF: ")
+    if len(pw) < 12:
+        sys.exit("too short: use 12+ characters (e.g. 5-6 random words)")
+    if getpass.getpass("Same again: ") != pw:
+        sys.exit("the two didn't match; nothing written")
+
+    tmp = tempfile.mkdtemp(prefix="sgnl-sheet-")
+    pdf = os.path.join(tmp, "plain.pdf")
+    try:
+        subprocess.run(["weasyprint", "-", pdf], input=page.encode(), check=True,
+                       stderr=subprocess.DEVNULL)
+        # qpdf reads its arguments from stdin (@-), one per line, so the
+        # password never appears on a command line. The owner password
+        # (for editing permissions) is random and thrown away.
+        args = [pdf, "--encrypt", "--user-password=" + pw,
+                "--owner-password=" + os.urandom(24).hex(), "--bits=256", "--", out]
+        r = subprocess.run(["qpdf", "@-"], input="\n".join(args) + "\n", text=True,
+                           capture_output=True)
+        if r.returncode != 0:
+            sys.exit("qpdf failed: " + r.stderr[-500:])
+    finally:
+        if os.path.exists(pdf):
+            with open(pdf, "r+b") as f:
+                f.write(os.urandom(os.path.getsize(pdf)))
+            os.remove(pdf)
+        os.rmdir(tmp)
+
+    r = subprocess.run(["qpdf", "@-"], input=f"--password={pw}\n--show-encryption\n{out}\n",
+                       text=True, capture_output=True)
+    if r.returncode != 0 or "Supplied password is user password" not in r.stdout or "R = 6" not in r.stdout:
+        os.remove(out)
+        sys.exit("check of the protected PDF failed; it was deleted, run again")
+    print(f"OK: {out} (AES-256, opens with your password)\n"
+          "Upload it to Google Drive and iCloud Drive.")
+
+main()

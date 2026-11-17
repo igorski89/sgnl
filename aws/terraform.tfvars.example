@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored - see ../.gitignore) if you need to override anything.
+# Credentials: the scoped example-sgnl-terraform key from bin/sgnl-secret, injected
+# by ./tf (see .docker-aws-env and bootstrap/README.md). No profile needed.
+# Optional: ./tf already sets the instance values from instance/sgnl.env
+# (name_prefix, domain_name, inbound_bucket_name, stalwart_host,
+# relay_username, notification_email). A value here overrides them.
+# region                   = "eu-central-1"
+# inbound_retention_days   = 30

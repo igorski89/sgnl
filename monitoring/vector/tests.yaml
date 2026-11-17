@@ -1,0 +1,127 @@
+# Unit tests for monitoring/vector/vector.yaml.erb (labels and redaction):
+# the generic ones. The instance adds its own (instance/monitoring/
+# vector-tests.yaml, e.g. its apps' redaction). Run: bin/sgnl-vector-test
+# Sample lines are the formats the component sessions reported
+# (2026-10-24), with made-up values.
+tests:
+  - name: generic credentials
+    inputs:
+      - insert_at: redact
+        type: log
+        log_fields:
+          service: sgnl-forgejo
+          message: "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345 key sk_live_51Habcdefghijk whsec_abcdefghijk AKIAABCDEFGHIJKLMNOP eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U postgres://app:hunter2@db:5432/x password=hunter3 ?token=tok123&x=1"
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              m = string!(.message)
+              assert!(!contains(m, "abcdefghijklmnopqrstuvwxyz"))
+              assert!(!contains(m, "51Habcdefghijk"))
+              assert!(!contains(m, "whsec_abcdefghijk"))
+              assert!(!contains(m, "AKIAABCDEFGHIJKLMNOP"))
+              assert!(!contains(m, "eyJhbGciOiJIUzI1NiJ9"))
+              assert!(!contains(m, "hunter2"))
+              assert!(!contains(m, "hunter3"))
+              assert!(!contains(m, "tok123"))
+              assert!(contains(m, "&x=1"))
+
+  - name: ordinary lines are left alone
+    inputs:
+      - insert_at: redact
+        type: log
+        log_fields:
+          service: sgnl-forgejo
+          message: "2026-10-24 10:00:01,234 INFO engine.service.prediction: request 8f3c whisper: en, 312 words in 9.1 s; basic configuration loaded; Error: none"
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.message, "2026-10-24 10:00:01,234 INFO engine.service.prediction: request 8f3c whisper: en, 312 words in 9.1 s; basic configuration loaded; Error: none")
+
+  - name: kamal-proxy request is parsed, its query redacted
+    inputs:
+      - insert_at: shape_docker
+        type: log
+        log_fields:
+          message: "{\"time\":\"2026-10-24T13:32:17Z\",\"level\":\"INFO\",\"msg\":\"Request\",\"host\":\"monitor.sgnl.example.com\",\"path\":\"/login/generic_oauth\",\"status\":302,\"service\":\"sgnl-monitor-web\",\"method\":\"GET\",\"query\":\"state=abc&code=SECRETCODE&session_state=s1\",\"client_addr\":\"203.0.113.9\"}"
+          container_name: kamal-proxy
+          stream: stdout
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.tenant, "infra")
+              assert_eq!(.service, "kamal-proxy")
+              assert_eq!(.instance, "kamal-proxy")
+              assert_eq!(.message, "GET monitor.sgnl.example.com/login/generic_oauth 302")
+              assert_eq!(.http.status, 302)
+              assert_eq!(.http.service, "sgnl-monitor-web")
+              assert!(!contains(string!(.http.query), "SECRETCODE"))
+              assert!(contains(string!(.http.query), "code=[redacted]"))
+
+  - name: journal line gets host labels and a stable unit
+    inputs:
+      - insert_at: shape_journal
+        type: log
+        log_fields:
+          message: "Accepted publickey for root from 203.0.113.9 port 52211 ssh2"
+          SYSLOG_IDENTIFIER: sshd
+          _SYSTEMD_UNIT: session-4711.scope
+          PRIORITY: "6"
+          _BOOT_ID: abc
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.tenant, "infra")
+              assert_eq!(.service, "sshd")
+              assert_eq!(.instance, "host")
+              assert_eq!(.unit, "session.scope")
+              assert!(!exists(._BOOT_ID))
+
+  - name: tokens in URL paths and unusual parameter names
+    inputs:
+      - insert_at: shape_docker
+        type: log
+        log_fields:
+          message: "{\"level\":\"INFO\",\"msg\":\"Request\",\"host\":\"drive.sgnl.example.com\",\"path\":\"/s/AbCdEfGh12345/download\",\"status\":200,\"method\":\"GET\",\"query\":\"reset_password_token=RPT123&page=2\"}"
+          container_name: kamal-proxy
+      - insert_at: redact
+        type: log
+        log_fields:
+          service: sgnl-forgejo
+          message: "I, INFO -- : [r9] Started GET \"/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBCZz09In19--0123abcd4567ef/photo.jpg\" for 203.0.113.7; /users/password/edit?reset_password_token=RPT456"
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              m = string!(.message)
+              assert!(!contains(m, "AbCdEfGh12345"))
+              assert!(!contains(m, "eyJfcmFpbHMi"))
+              assert!(!contains(m, "RPT456"))
+              if exists(.http) {
+                assert_eq!(.http.path, "/s/[redacted]/download")
+                assert_eq!(.http.query, "reset_password_token=[redacted]&page=2")
+              } else {
+                assert!(contains(m, "/blobs/redirect/[id]/photo.jpg"))
+              }
+
+  - name: request ids, commit SHAs after a colon and short paths stay
+    inputs:
+      - insert_at: redact
+        type: log
+        log_fields:
+          service: sgnl-forgejo
+          message: "I, INFO -- : [0f8e2c4a-1b2d-4e5f-8a9b-0c1d2e3f4a5b] Started GET \"/dashboard/settings\" image localhost:5555/sgnl-grafana:e57de6b222acaf288dbe3a348ec2f3ba45171a98"
+    outputs:
+      - extract_from: redact
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.message, "I, INFO -- : [0f8e2c4a-1b2d-4e5f-8a9b-0c1d2e3f4a5b] Started GET \"/dashboard/settings\" image localhost:5555/sgnl-grafana:e57de6b222acaf288dbe3a348ec2f3ba45171a98")

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Wraps the official amazon/aws-cli image for the ad-hoc commands in
+# README.md (sts get-caller-identity, secretsmanager put-secret-value,
+# logs tail) so they don't depend on the aws CLI being installed locally.
+# Credentials come from bin/sgnl-secret, see .docker-aws-env.
+cd "$(dirname "$0")"
+source ./.docker-aws-env
+
+docker run --rm "${DOCKER_TTY[@]}" "${DOCKER_AWS_ENV[@]}" \
+  -v "$PWD:/aws" -w /aws \
+  amazon/aws-cli "$@"
