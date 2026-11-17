@@ -61,6 +61,10 @@ env:
     # The email comes from the SSO login; changing it here would break the link.
     EMAIL_CHANGE_ALLOWED: "false"
     ENABLE_DB_WAL: "true"
+    # Organisation groups (Admin Console -> Groups): share collections with
+    # a group instead of each member. Managed in Vaultwarden, not synced
+    # from Keycloak's groups. Vaultwarden calls the feature experimental.
+    ORG_GROUPS_ENABLED: "true"
     SSO_ENABLED: "true"
     SSO_ONLY: "true"
     SSO_SIGNUPS_ALLOWED: "true"
