@@ -18,7 +18,7 @@ Nightly, encrypted, off-site. Live since 2026-10-08 (first snapshot
 ## Bootstrap bundle (what's only on the laptop)
 
 Since 2026-11-17, `bin/sgnl-bootstrap-push` puts the whole git repo
-(`git bundle --all`), the 26 live secrets (CSV, as
+(`git bundle --all`), every live secret (CSV, as
 `bin/sgnl-breakglass-export`) and `aws/terraform.tfstate` + `tfvars` into
 the same restic repository as one tar (host `bootstrap`, tag `bootstrap`),
 streamed from memory. It runs after every commit (`.githooks/post-commit`,

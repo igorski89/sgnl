@@ -55,7 +55,8 @@ git checkout main     # the bundle checks out whatever branch was current
 git clone ../sgnl-bootstrap/instance.bundle instance
 git -C instance checkout main
 export SGNL_SECRETS="csv:$HOME/sgnl-recovery/sgnl-bootstrap/secrets.csv"
-bin/sgnl-secret --list | wc -l          # 26
+bin/sgnl-secret --list | wc -l          # same as the next line
+python3 -c 'import csv,sys; print(sum(1 for _ in csv.DictReader(open(sys.argv[1]))))' ../sgnl-bootstrap/secrets.csv
 cp ../sgnl-bootstrap/aws/terraform.tf* aws/
 cp .kamal/secrets.example .kamal/secrets
 git config core.hooksPath .githooks
@@ -66,7 +67,7 @@ Keep `SGNL_SECRETS` exported in every shell until phase 6.
 
 Tools: Ruby + `gem install kamal -v 2.12.0`, `stalwart-cli` (`docs/DEPLOY.md` §0). Terraform runs in Docker (`aws/tf`).
 
-**Check:** `bin/sgnl-secret --list` shows 26 names; `git log -1` and
+**Check:** `bin/sgnl-secret --list` shows as many names as `secrets.csv` has rows; `git log -1` and
 `git -C instance log -1` match the manifest's two commits;
 `instance/sgnl.env` exists.
 

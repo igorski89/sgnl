@@ -46,6 +46,8 @@ LIVE = {
     "opencloud-admin-password":        ("SGNL OpenCloud local admin", f"https://drive.{S}", "CLI/API break-glass only (no login form)."),
     "grafana-admin-password":          ("SGNL Grafana admin", f"https://monitor.{S}", "Local Grafana admin."),
     "forgejo-admin-token":             ("SGNL Forgejo admin API token", f"https://git.{S}", "Used by bin/sgnl-user-suspend."),
+    "vaultwarden-org-client-id":       ("SGNL Vaultwarden organisation API client ID", f"https://vault.{S}", "Organisation API key (Admin Console -> Settings -> Organisation info). Members and groups sync from Keycloak."),
+    "vaultwarden-org-client-secret":   ("SGNL Vaultwarden organisation API secret", f"https://vault.{S}", "Organisation API key; can be rotated in the Admin Console."),
     "forgejo-secret-key":              ("SGNL Forgejo SECRET_KEY", f"https://git.{S}", "Encrypts data in Forgejo's DB; needed to restore it."),
     "forgejo-internal-token":          ("SGNL Forgejo INTERNAL_TOKEN", f"https://git.{S}", "Forgejo internal token."),
     "forgejo-lfs-jwt-secret":          ("SGNL Forgejo LFS JWT secret", f"https://git.{S}", "Forgejo LFS."),

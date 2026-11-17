@@ -5,7 +5,7 @@ restic backups, as its own snapshot (host "bootstrap", tag "bootstrap"):
   sgnl-bootstrap/repo.bundle       the SGNL repo (git bundle --all)
   sgnl-bootstrap/instance.bundle   the instance repo in instance/, once it
                                    is its own repo (git bundle --all)
-  sgnl-bootstrap/secrets.csv       the 26 live Keychain secrets (bin/sgnl-breakglass-export)
+  sgnl-bootstrap/secrets.csv       every live secret (bin/sgnl-breakglass-export)
   sgnl-bootstrap/aws/terraform.tfstate, terraform.tfvars   (git-ignored)
   sgnl-bootstrap/MANIFEST.txt      commit, date, what's inside
 
