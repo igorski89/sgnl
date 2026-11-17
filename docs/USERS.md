@@ -195,6 +195,27 @@ Setup that lives in Forgejo's database: `bin/sgnl-forgejo-setup auth`
 (login source, still named `authelia`, pointing at Keycloak) and
 `bin/sgnl-forgejo-setup org` (org + team).
 
+## Shared passwords (Vaultwarden organisation)
+
+Personal passwords stay in each person's own vault. Company passwords
+live in the organisation, sorted into **collections**, and collections
+are shared with **groups**. Which groups exist, who is in them and which
+collections they see is config, not clicks:
+`instance/vaultwarden/org.yaml`, applied by `bin/sgnl-vault-sync`.
+
+- Members and groups follow Keycloak (e.g. Vaultwarden `everyone` =
+  Keycloak `sgnl_users`). `bin/sgnl-kc` runs the sync after
+  finish-invite, group changes, disable and enable, so a new person is
+  invited automatically; they accept the invite email once, and the next
+  sync confirms them. Disabled people are revoked; owners are never
+  touched.
+- Collections listed in `org.yaml` are created and their group access
+  set (`view`, `view-hidden`, `edit`, `manage`); others are left alone.
+- Moving an item into a collection: its menu, "Assign to collections"
+  (one-way: it can't go back to a personal vault).
+- `bin/sgnl-secret --set` puts new infrastructure secrets into the
+  collection `SGNL`.
+
 ## Landing page (home.sgnl.example.com)
 
 Dashy, configured only through `instance/dashy/conf.yml` in git (UI editing is

@@ -17,6 +17,10 @@ keycloak/realm.yaml). See docs/USERS.md.
   bin/sgnl-kc logout <user>                # ends all of that person's sessions, incl. offline tokens
   bin/sgnl-kc events [<user>] [max]        # recent login events
 
+finish-invite, add-to-group, remove-from-group, disable and enable then
+run bin/sgnl-vault-sync (Vaultwarden members and groups follow Keycloak),
+if the instance has vaultwarden/org.yaml.
+
 Invite: a new person can't read <user>@ before they can log in, so the
 set-up email goes to a personal address. Until finish-invite they're only
 in sgnl_invited: they can reach their account page but no app (the apps
@@ -123,6 +127,22 @@ def set_groups(uid, add=(), remove=()):
         api("DELETE", f"/users/{uid}/groups/{ids[g]}")
 
 
+def vault_sync():
+    """Vaultwarden members/groups follow Keycloak (bin/sgnl-vault-sync), if
+    the instance has an organisation config. A failure only warns: the
+    Keycloak change stands; re-run bin/sgnl-vault-sync later."""
+    if not os.path.exists(os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")):
+        return
+    r = subprocess.run([os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgnl-vault-sync")],
+                       capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode:
+        print(f"warning: Vaultwarden not synced ({out.splitlines()[-1] if out else 'failed'}); "
+              "run bin/sgnl-vault-sync", file=sys.stderr)
+    else:
+        print("vaultwarden: " + "; ".join(l for l in out.splitlines() if not l.startswith(("Keycloak:", "  "))))
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.strip()); return
@@ -152,6 +172,7 @@ def main(argv):
         uid = user(args[0])["id"]
         set_groups(uid, **{"add" if cmd == "add-to-group" else "remove": args[1:]})
         print(f"{args[0]}: {','.join(user_groups(uid))}")
+        vault_sync()
     elif cmd == "setup-email" and len(args) in (1, 2):
         setup_email(user(args[0]), int(args[1]) if len(args) == 2 else 24)
     elif cmd == "invite" and len(args) in (3, 4):
@@ -169,12 +190,14 @@ def main(argv):
         update_user(u, email=email, emailVerified=True)
         set_groups(u["id"], add=["sgnl_users", *[g for g in args[1:] if g != "sgnl_users"]], remove=["sgnl_invited"])
         print(f"{args[0]}: email {email}, groups {','.join(user_groups(u['id']))}")
+        vault_sync()
     elif cmd in ("disable", "enable") and len(args) == 1:
         u = user(args[0])
         update_user(u, enabled=cmd == "enable")
         if cmd == "disable":
             api("POST", f"/users/{u['id']}/logout")
         print(f"{args[0]}: {cmd}d" + (" and logged out everywhere" if cmd == "disable" else ""))
+        vault_sync()
     elif cmd == "logout" and len(args) == 1:
         api("POST", f"/users/{user(args[0])['id']}/logout")
         print(f"{args[0]}: all sessions ended (incl. offline tokens)")

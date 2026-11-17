@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Vaultwarden organisation as config: members and groups follow Keycloak,
+collections and their access come from $SGNL_INSTANCE_DIR/vaultwarden/org.yaml.
+
+  bin/sgnl-vault-sync            # apply
+  bin/sgnl-vault-sync --dry-run  # show what Keycloak says, change nothing
+
+What it does:
+  1. Keycloak: everyone in the groups named in org.yaml (sgnl-agent).
+  2. Members + groups -> Vaultwarden through the organisation import
+     (Bitwarden "Directory Connector" API, organisation API key): new
+     people are invited by email, disabled ones revoked, people no longer
+     in any listed group removed; group membership is set exactly.
+     Owners are never revoked or removed.
+  3. Collections: creates missing ones, sets each listed collection's
+     group access. Collections not in org.yaml are left alone.
+  4. Confirms members who accepted their invite (needs the owner's
+     unlocked vault: Bitwarden hands the organisation key over then).
+
+Each new person still accepts the invite email once (Bitwarden's design).
+Needs: BW_SESSION (an owner's vault, bw CLI), secrets
+vaultwarden-org-client-id/-secret and keycloak-sgnl-agent-client-secret.
+"""
+import base64, importlib.machinery, json, os, subprocess, sys, time
+import urllib.error, urllib.request, urllib.parse
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402
+I = instance.load()
+VAULT = f"https://vault.{I['SGNL_APPS_DOMAIN']}"
+CONFIG = os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")
+kc = importlib.machinery.SourceFileLoader("sgnl_kc", os.path.join(ROOT, "bin", "sgnl-kc")).load_module()
+
+# org.yaml permission -> Bitwarden collection access flags
+PERMS = {"view": (True, False, False), "view-hidden": (True, True, False),
+         "edit": (False, False, False), "manage": (False, False, True)}
+
+
+def fail(msg):
+    sys.exit("sgnl-vault-sync: " + msg)
+
+
+def secret(name):
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-secret"), name], capture_output=True, text=True)
+    if r.returncode:
+        fail(r.stderr.strip())
+    return r.stdout
+
+
+def http(method, url, token=None, body=None, form=None):
+    headers, data = {"Accept": "application/json"}, None
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    if body is not None:
+        data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
+    if form is not None:
+        data, headers["Content-Type"] = urllib.parse.urlencode(form).encode(), "application/x-www-form-urlencoded"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method)) as r:
+            raw = r.read()
+            return json.loads(raw) if raw.strip() else None
+    except urllib.error.HTTPError as e:
+        fail(f"{method} {url.replace(VAULT, '')} -> HTTP {e.code} {e.read().decode()[:300]}")
+
+
+def bw(*args, stdin=None):
+    r = subprocess.run(["bw", *args, "--nointeraction"], input=stdin, capture_output=True, text=True)
+    if r.returncode:
+        fail("bw " + " ".join(args[:2]) + ": " + (r.stderr.strip() or r.stdout.strip())[-300:])
+    return json.loads(r.stdout) if r.stdout.strip().startswith(("[", "{")) else r.stdout
+
+
+def enc(o):
+    return base64.b64encode(json.dumps(o).encode()).decode()
+
+
+def load_config():
+    if not os.path.exists(CONFIG):
+        fail(f"no {CONFIG} (see instance.example/vaultwarden/org.yaml)")
+    out = subprocess.run(["ruby", "-ryaml", "-rjson", "-e", "puts JSON.dump(YAML.load_file(ARGV[0]))", CONFIG],
+                         capture_output=True, text=True, check=True).stdout
+    c = json.loads(out)
+    for col, access in (c.get("collections") or {}).items():
+        for g, p in access.items():
+            if g not in c["groups"]:
+                fail(f"collection {col!r}: unknown group {g!r} (not under groups:)")
+            if p not in PERMS:
+                fail(f"collection {col!r}: {p!r} is not one of {', '.join(PERMS)}")
+    return c
+
+
+def keycloak_members(groups):
+    """{vw group: [kc users]}, users as dicts (id, email, enabled, username)."""
+    ids = kc.group_ids()
+    out = {}
+    for vw_group, kc_group in groups.items():
+        if kc_group not in ids:
+            fail(f"Keycloak has no group {kc_group!r}")
+        _, members, _ = kc.api("GET", f"/groups/{ids[kc_group]}/members", max="1000", briefRepresentation="true")
+        out[vw_group] = [m for m in members if m.get("email")]
+    return out
+
+
+def owner_token():
+    """The bw CLI's current access token for the logged-in owner (refreshed by `bw sync`)."""
+    bw("sync")
+    path = os.path.expanduser("~/Library/Application Support/Bitwarden CLI/data.json")
+    if os.environ.get("BITWARDENCLI_APPDATA_DIR"):
+        path = os.path.join(os.environ["BITWARDENCLI_APPDATA_DIR"], "data.json")
+    data = json.load(open(path))
+    tokens = [v for k, v in data.items() if k.endswith("_token_accessToken") and isinstance(v, str)]
+    if len(tokens) != 1:
+        fail(f"expected one bw access token in {path}, found {len(tokens)}")
+    claims = json.loads(base64.urlsafe_b64decode(tokens[0].split(".")[1] + "=="))
+    if claims.get("exp", 0) < time.time() + 60:
+        fail("bw access token expired; run `bw sync` and retry")
+    return tokens[0]
+
+
+def main():
+    dry = sys.argv[1:] == ["--dry-run"]
+    if sys.argv[1:] not in ([], ["--dry-run"]):
+        sys.exit(__doc__)
+    c = load_config()
+    by_group = keycloak_members(c["groups"])
+    people = {u["id"]: u for us in by_group.values() for u in us}
+
+    print(f"Keycloak: {len(people)} people in {', '.join(c['groups'].values())}")
+    for g, us in by_group.items():
+        print(f"  {g}: {', '.join(sorted(u['username'] + ('' if u.get('enabled', True) else ' (disabled)') for u in us)) or '-'}")
+    if dry:
+        print("dry run: nothing changed")
+        return
+
+    # 1+2. Members and groups (organisation API key).
+    client_id = secret("vaultwarden-org-client-id")
+    org_id = client_id.split(".", 1)[1]
+    tok = http("POST", f"{VAULT}/identity/connect/token", form={
+        "grant_type": "client_credentials", "scope": "api.organization",
+        "client_id": client_id, "client_secret": secret("vaultwarden-org-client-secret")})["access_token"]
+    http("POST", f"{VAULT}/api/public/organization/import", token=tok, body={
+        "members": [{"email": u["email"].lower(), "externalId": u["id"], "deleted": not u.get("enabled", True)}
+                    for u in people.values()],
+        "groups": [{"name": g, "externalId": "keycloak:" + c["groups"][g],
+                    "memberExternalIds": [u["id"] for u in us if u.get("enabled", True)]}
+                   for g, us in by_group.items()],
+        "overwriteExisting": True})
+    print(f"members and groups imported ({len(people)} people, {len(by_group)} groups)")
+
+    # 3. Collections (owner: names are encrypted with the organisation key, so via bw).
+    otok = owner_token()
+    vw_groups = http("GET", f"{VAULT}/api/organizations/{org_id}/groups", token=otok)
+    vw_groups = vw_groups.get("data", vw_groups) if isinstance(vw_groups, dict) else vw_groups
+    gid = {}
+    for g in vw_groups:
+        if g.get("externalId", "").startswith("keycloak:"):
+            gid[g["name"]] = g["id"]
+    existing = {col["name"]: col for col in bw("list", "org-collections", "--organizationid", org_id)}
+    for name, access in (c.get("collections") or {}).items():
+        groups = []
+        for g, p in access.items():
+            if g not in gid:
+                fail(f"group {g!r} not in Vaultwarden after the import")
+            ro, hide, manage = PERMS[p]
+            groups.append({"id": gid[g], "readOnly": ro, "hidePasswords": hide, "manage": manage})
+        if name in existing:
+            col = bw("get", "org-collection", existing[name]["id"], "--organizationid", org_id)
+            # Keycloak-managed groups get exactly org.yaml's access; any
+            # other access on the collection stays as it is.
+            col["groups"] = groups + [g for g in col.get("groups") or [] if g["id"] not in gid.values()]
+            bw("edit", "org-collection", col["id"], "--organizationid", org_id, stdin=enc(col))
+            print(f"collection {name}: access set ({', '.join(f'{g} {p}' for g, p in access.items())})")
+        else:
+            bw("create", "org-collection", "--organizationid", org_id, stdin=enc({
+                "organizationId": org_id, "name": name, "externalId": None, "groups": groups, "users": []}))
+            print(f"collection {name}: created ({', '.join(f'{g} {p}' for g, p in access.items())})")
+    others = sorted(set(existing) - set(c.get("collections") or {}))
+    if others:
+        print(f"left alone (not in org.yaml): {', '.join(others)}")
+
+    # 4. Confirm members who accepted (status 1).
+    members = bw("list", "org-members", "--organizationid", org_id)
+    for m in members:
+        if m.get("status") == 1:
+            bw("confirm", "org-member", m["id"], "--organizationid", org_id)
+            print(f"confirmed {m.get('email')}")
+    waiting = [m.get("email") for m in members if m.get("status") == 0]
+    if waiting:
+        print(f"invited, waiting for them to accept the email: {', '.join(waiting)}")
+
+
+if __name__ == "__main__":
+    main()

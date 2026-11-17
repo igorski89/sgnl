@@ -1,0 +1,20 @@
+# Vaultwarden organisation as config, applied by bin/sgnl-vault-sync.
+# Members and groups follow Keycloak; collections and who sees them are
+# set here. Owners are never removed. Collections not listed are left
+# alone (never deleted).
+organisation: Example Org
+
+# Vaultwarden group: Keycloak group. Everyone in these Keycloak groups is
+# a member of the organisation; disabled Keycloak users are revoked.
+groups:
+  everyone: sgnl_users
+  admins: admins
+
+# Collection: {group: view | view-hidden | edit | manage}
+#   view         read items and passwords
+#   view-hidden  use items, can't read the passwords
+#   edit         change items
+#   manage       change items and the collection's access
+collections:
+  Example Org: {everyone: view, admins: manage}
+  SGNL: {admins: manage}
