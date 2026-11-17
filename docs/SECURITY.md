@@ -14,7 +14,7 @@ replaced Authelia + lldap in 2026-10).
 | 1 | Rewrite Stalwart for 0.16 (`config.json` + apply plan) | ✅🧪 `stalwart/config.json`, `stalwart/plan.ndjson`, `stalwart/plan-oidc.ndjson`, `bin/stalwart-apply` |
 | 2 | Submission port | **465** (implicit TLS) + 993. ✅🧪 Lambda switched to `secure: true` on 465 |
 | 3 | Per-app OIDC everywhere supported, incl. Vaultwarden SSO | ✅ Keycloak clients (Authelia until 2026-10-19) for OpenCloud (4), Forgejo, Vaultwarden, Bulwark, Stalwart web UI, Dashy |
-| 4 | Bump all image pins | ✅ exact tags, all verified to exist (README table) |
+| 4 | Bump all image pins | ✅ exact tags, all verified to exist (table in `ARCHITECTURE.md`) |
 | 5 | File storage volume | On the root disk (OpenCloud); check free space before deploying, grow the disk when it fills |
 | 6 | Host: SSH passwords off + `DOCKER-USER` rules | ✅ `host/harden.sh --apply`. Check afterwards: key SSH ok, password SSH refused, every site on the host ok on IPv4/IPv6, 465/993 ok; from outside only 22/80/443/465/993 answer (§2) |
 

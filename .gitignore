@@ -25,5 +25,5 @@ aws/lambda/forwarder.zip
 onboarding/
 __pycache__/
 
-# The instance (its own private repo, see README "Your instance").
+# The instance (its own private repo, see docs/ARCHITECTURE.md "Your instance").
 /instance/
