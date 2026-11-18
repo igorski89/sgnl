@@ -51,3 +51,8 @@ variable "name_prefix" {
   description = "Prefix for every AWS resource name here (<company>-<project>). Set by ./tf from SGNL_PREFIX in instance/sgnl.env, like the other instance values here (domain_name, stalwart_host, relay_username, inbound_bucket_name, notification_email). bootstrap/terraform-policy.json uses the same prefix ({{SGNL_PREFIX}}, rendered with bin/sgnl-render)."
   type        = string
 }
+
+variable "listmonk_host" {
+  description = "listmonk's host; SES bounce/complaint events for newsletters go to https://<this>/webhooks/service/ses. Set by ./tf from SGNL_APPS_DOMAIN."
+  type        = string
+}

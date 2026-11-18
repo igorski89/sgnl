@@ -20,3 +20,13 @@ output "forwarder_dlq_url" {
   description = "SQS queue holding SES events the forwarder gave up on - see README.md \"Replaying failed messages\"."
   value       = aws_sqs_queue.forwarder_dlq.url
 }
+
+output "newsletter_configuration_set" {
+  description = "SES configuration set listmonk's mail carries (X-SES-CONFIGURATION-SET)."
+  value       = aws_sesv2_configuration_set.newsletter.configuration_set_name
+}
+
+output "newsletter_events_topic_arn" {
+  description = "SNS topic with newsletter bounces/complaints; allowed in listmonk's bounce settings."
+  value       = aws_sns_topic.newsletter_events.arn
+}

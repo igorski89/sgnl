@@ -12,12 +12,19 @@ Sets:
   the super admin  (LISTMONK_ADMIN_USER = SGNL_ADMIN_USER) gets the email
                    <SGNL_ADMIN_USER>@<SGNL_DOMAIN>, so that person's
                    Keycloak login opens it
-then restarts listmonk, which reads settings at start.
+  app.from_email   "<SGNL_ORG_NAME> <newsletter@<SGNL_DOMAIN>>" (replies land
+                   in the domain's catch-all)
+  smtp             one server: SES (SGNL_SMTP_HOST:587, STARTTLS, the
+                   ses-smtp-* credentials), header X-SES-CONFIGURATION-SET:
+                   <prefix>-newsletter (aws/newsletter.tf)
+  bounce.*         processing on, SES webhook on; hard bounce or complaint
+                   -> blocklist, 2 soft bounces -> nothing (Amazon's advice)
+then restarts listmonk, which reads settings at start. SMTP changes made
+in listmonk's UI are overwritten by the next run: change them here.
 
 Values are merged into the stored JSON (keys listmonk adds in later
-versions are kept). SQL goes to psql on stdin over SSH, so the client
-secret is never on a command line. Sending (SMTP, bounces) is not set
-here yet: docs/DEPLOY.md "listmonk".
+versions are kept). SQL goes to psql on stdin over SSH, so secrets are
+never on a command line.
 """
 import json, os, subprocess, sys
 
@@ -27,6 +34,10 @@ import instance  # noqa: E402
 I = instance.load()
 HOST, APPS, DOMAIN, REALM, ADMIN = (I["SGNL_HOST"], I["SGNL_APPS_DOMAIN"], I["SGNL_DOMAIN"],
                                     I["SGNL_REALM"], I["SGNL_ADMIN_USER"])
+# Sending: SES SMTP, every message tagged with the configuration set that
+# routes its bounces/complaints back to listmonk (aws/newsletter.tf).
+FROM = f'{I["SGNL_ORG_NAME"]} <newsletter@{DOMAIN}>'
+CONFIG_SET = I["SGNL_PREFIX"] + "-newsletter"
 
 
 def secret(name):
@@ -48,16 +59,32 @@ oidc = {"enabled": True, "provider_url": f"https://id.{APPS}/realms/{REALM}",
         "provider_name": "SGNL", "client_id": "listmonk",
         "client_secret": secret("keycloak-listmonk-client-secret"),
         "auto_create_users": False}
+smtp = [{"enabled": True, "host": I["SGNL_SMTP_HOST"], "port": 587, "auth_protocol": "login",
+         "username": secret("ses-smtp-username"), "password": secret("ses-smtp-password"),
+         "hello_hostname": f"listmonk.{APPS}", "max_conns": 5, "idle_timeout": "15s",
+         "wait_timeout": "5s", "max_msg_retries": 2, "msg_retry_delay": "10ms",
+         "tls_type": "STARTTLS", "tls_skip_verify": False,
+         "email_headers": [{"X-SES-CONFIGURATION-SET": CONFIG_SET}], "from_addresses": []}]
+bounce_actions = {"soft": {"count": 2, "action": "none"}, "hard": {"count": 1, "action": "blocklist"},
+                  "complaint": {"count": 1, "action": "blocklist"}}
 sql = f"""\\set ON_ERROR_STOP on
 BEGIN;
 UPDATE settings SET value = to_jsonb({q(f"https://listmonk.{APPS}")}::text), updated_at = NOW()
   WHERE key = 'app.root_url';
 UPDATE settings SET value = value || {q(json.dumps(oidc))}::jsonb, updated_at = NOW()
   WHERE key = 'security.oidc';
+UPDATE settings SET value = to_jsonb({q(FROM)}::text), updated_at = NOW() WHERE key = 'app.from_email';
+UPDATE settings SET value = {q(json.dumps(smtp))}::jsonb, updated_at = NOW() WHERE key = 'smtp';
+UPDATE settings SET value = 'true'::jsonb, updated_at = NOW()
+  WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled', 'bounce.ses_enabled');
+UPDATE settings SET value = {q(json.dumps(bounce_actions))}::jsonb, updated_at = NOW() WHERE key = 'bounce.actions';
 UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = NOW()
   WHERE username = {q(ADMIN)} AND email IS DISTINCT FROM {q(f"{ADMIN}@{DOMAIN}")};
 SELECT 'root_url ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.root_url');
 SELECT 'oidc ' || (SELECT (value->>'enabled') || ' ' || (value->>'provider_url') FROM settings WHERE key = 'security.oidc');
+SELECT 'from ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.from_email');
+SELECT 'smtp ' || (SELECT string_agg((e->>'host') || ':' || (e->>'port') || ' ' || (e->>'enabled'), ', ') FROM settings, jsonb_array_elements(value) e WHERE key = 'smtp');
+SELECT 'bounces ' || (SELECT string_agg(key || '=' || (value #>> '{{}}'), ' ' ORDER BY key) FROM settings WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled', 'bounce.ses_enabled'));
 SELECT 'admin ' || username || ' <' || email || '>' FROM users WHERE username = {q(ADMIN)};
 COMMIT;
 """

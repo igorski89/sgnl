@@ -239,12 +239,20 @@ DNS: `listmonk.sgnl` (DNS.md). Login: "SGNL" on the login page, matched by
 email to an existing listmonk account (no auto-created accounts: add
 people in listmonk → Users with their `<user>@<domain>` email).
 
-**Not set up yet: sending.** Before the first campaign: a separate
-sending domain for bulk mail (its own SPF/DKIM/DMARC, so newsletter
-complaints never touch company mail), an SES configuration set for it,
-SMTP in listmonk → Settings → SMTP (the SES credentials), bounce
-processing via SES → SNS → `https://listmonk.sgnl.example.com/webhooks/service/ses`,
-and double opt-in on public lists.
+**Sending** (`aws/newsletter.tf`, then `bin/sgnl-listmonk-setup`): SES
+SMTP with the header `X-SES-CONFIGURATION-SET: <prefix>-newsletter`; that
+configuration set publishes bounces and complaints to the SNS topic
+`<prefix>-newsletter-events`, whose HTTPS subscription
+(`/webhooks/service/ses`) listmonk confirms itself. Hard bounces and
+complaints blocklist the address. Order on a fresh instance: `./tf apply
+-target=aws_sesv2_configuration_set_event_destination.newsletter_bounces`,
+then `bin/sgnl-listmonk-setup` (turns on the SES webhook), then `./tf
+apply` (the subscription). Only newsletter mail is affected; the domain
+identity and all other company mail are not. Test with SES's simulator
+addresses (`bounce@`, `complaint@simulator.amazonses.com`) as
+subscribers of a test list. listmonk 6.2 can't restrict which SNS topic
+may call the webhook (v7 adds "allowed SNS topic ARNs"). Use double
+opt-in for public lists.
 
 ## 5b. Forgejo
 

@@ -16,8 +16,9 @@ export TF_VAR_inbound_bucket_name=$SGNL_PREFIX-inbound-mail
 export TF_VAR_stalwart_host=mail.$SGNL_APPS_DOMAIN
 export TF_VAR_relay_username=ses-relay@$SGNL_DOMAIN
 export TF_VAR_notification_email=$SGNL_ALERT_EMAIL
+export TF_VAR_listmonk_host=listmonk.$SGNL_APPS_DOMAIN
 TF_ENV=()
-for v in name_prefix domain_name inbound_bucket_name stalwart_host relay_username notification_email; do
+for v in name_prefix domain_name inbound_bucket_name stalwart_host relay_username notification_email listmonk_host; do
   TF_ENV+=(-e "TF_VAR_$v")
 done
 
