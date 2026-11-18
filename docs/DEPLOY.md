@@ -15,9 +15,19 @@ describes the Keycloak setup.
 ## 0. Prerequisites
 
 Secrets: every `example-sgnl-*` value is a Login item in Vaultwarden
-(folder "SGNL infra"), read through `bin/sgnl-secret` (Keychain until
-2026-11). Unlock once per terminal, `export BW_SESSION=$(bw unlock --raw)`,
-and run Kamal as `bin/sgnl-env kamal ...` (one lookup instead of 19).
+(the organisation's collection `SGNL`, §5; before the organisation
+exists, the personal folder "SGNL infra"), read through
+`bin/sgnl-secret` (Keychain until 2026-11). Unlock once per terminal,
+`export BW_SESSION=$(bw unlock --raw)`, and run Kamal as
+`bin/sgnl-env kamal ...` (one lookup instead of 19).
+
+**Restarting without a deploy** (`kamal app boot`, `kamal app
+reboot`) uses the image tagged with the current commit. Right after a
+fresh clone, or the 2026-11 repo split, no such image exists yet: pass
+the running one, e.g. `kamal app boot -c config/deploy.<name>.yml
+--version <tag>` (tag from `docker ps` on the server: the part after
+the image's `:`). A normal `kamal deploy` builds the current tag, after
+which plain boots work again.
 
 - [ ] AWS: scoped IAM user, not root — `../aws/bootstrap/README.md`. Use
       the current `terraform-policy.json` (it includes the DLQ/SQS
