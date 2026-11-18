@@ -52,6 +52,7 @@ bin/sgnl-backup-install            # install/update script, units, env files; en
 bin/sgnl-backup-install --run      # ...and back up now
 bin/sgnl-backup-restore-test       # restore drill (below)
 bin/sgnl-backup-restore-test-keycloak   # Keycloak: dump -> throwaway Postgres + Keycloak
+bin/sgnl-backup-restore-test-listmonk   # listmonk: dump + uploads -> throwaway Postgres + listmonk
 
 ssh root@203.0.113.10 journalctl -u sgnl-backup -n 100   # last runs
 ssh root@203.0.113.10 systemctl list-timers sgnl-backup.timer
@@ -142,6 +143,17 @@ apps would keep trusting tokens). First run 2026-10-18: OK (1 user,
 5 groups, 16 clients, keys equal). Run it before every Keycloak or
 Postgres upgrade. Major Postgres upgrades: dump and restore into a fresh
 instance, not `pg_upgrade`.
+
+## Restore drill: listmonk
+
+`bin/sgnl-backup-restore-test-listmonk [snapshot]` restores the dump and
+the uploads, loads the dump into a throwaway Postgres (live's image),
+starts a throwaway listmonk (live's image) on an internal network (no
+internet: it can't send anything), then checks: `/health`, counts of
+lists/subscribers/campaigns/templates/users next to live, settings
+(root URL, Keycloak login, SES webhook and topic) equal to live, and
+uploads present. First run 2026-11-18: OK (snapshot e0315858). Run it
+before every listmonk or Postgres upgrade.
 
 Real restore: `kamal accessory boot postgres -c config/deploy.keycloak.yml`
 on an empty volume, `docker exec -i sgnl-keycloak-postgres pg_restore -U

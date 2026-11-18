@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Restore drill for listmonk: restores the latest backup's pg_dump and
+# uploads on the host and checks:
+#   - the dump is in the backup and pg_restore loads it into a throwaway
+#     Postgres (same image as live);
+#   - a throwaway listmonk (same image as live) starts on it and answers
+#     /health (internal network: no internet, no published ports, so it
+#     can't send a single mail);
+#   - lists, subscribers, campaigns, templates and users: same counts as
+#     live (live may be newer than the snapshot);
+#   - its settings survived: root URL, Keycloak login on, SES bounce
+#     webhook on with a topic;
+#   - the uploads volume's files are in the backup.
+# Cleans up after itself. See docs/BACKUPS.md. Run before every listmonk
+# or Postgres upgrade.
+#
+#   bin/sgnl-backup-restore-test-listmonk [snapshot]   # default: latest
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+HOST=root@$SGNL_HOST
+SNAPSHOT=${1:-latest}
+
+ssh "$HOST" "export SNAPSHOT='$SNAPSHOT'; exec bash -s" <<'REMOTE'
+set -euo pipefail
+B=/opt/sgnl/backup
+T=$B/restore-test-listmonk
+NAME=sgnl-restore-test-listmonk
+cleanup() {
+  docker rm -f $NAME $NAME-db >/dev/null 2>&1 || true
+  docker network rm $NAME >/dev/null 2>&1 || true
+  rm -rf "$T"
+}
+trap cleanup EXIT
+cleanup
+
+LIVE=$(docker ps -qf label=service=sgnl-listmonk -f label=role=web | head -1)
+[[ -n $LIVE ]] || { echo "live listmonk not running (needed for its image and for comparison)"; exit 1; }
+IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
+PGIMAGE=$(docker inspect --format '{{.Config.Image}}' sgnl-listmonk-postgres)
+
+echo "==> restoring listmonk's dump and uploads from snapshot $SNAPSHOT"
+docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
+  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-listmonk \
+  --include /staging/listmonk --include /staging/sgnl_listmonk_uploads -q
+DUMP=$T/staging/listmonk/listmonk.dump
+[[ -s $DUMP ]] || { echo "MISSING in backup: listmonk/listmonk.dump"; exit 1; }
+echo "    restored: dump $(du -h "$DUMP" | cut -f1)"
+
+echo "==> loading it into a throwaway Postgres ($PGIMAGE)"
+docker network create --internal $NAME >/dev/null
+docker run -d --name $NAME-db --network $NAME --network-alias db -e POSTGRES_USER=listmonk \
+  -e POSTGRES_DB=listmonk -e POSTGRES_PASSWORD=restore-test -v "$DUMP:/dump:ro" "$PGIMAGE" >/dev/null
+for i in $(seq 1 30); do
+  docker exec $NAME-db pg_isready -U listmonk -q 2>/dev/null && break
+  [[ $i == 30 ]] && { echo "throwaway Postgres never got ready"; exit 1; }
+  sleep 2
+done
+sleep 2 # the image restarts Postgres once after initdb
+docker exec $NAME-db pg_restore -U listmonk -d listmonk --clean --if-exists --no-owner /dump
+echo "    pg_restore: ok"
+
+echo "==> starting a throwaway listmonk on it (no internet, no ports)"
+docker run -d --name $NAME --network $NAME --memory 256m \
+  -e LISTMONK_app__address=0.0.0.0:9000 -e LISTMONK_db__host=db -e LISTMONK_db__port=5432 \
+  -e LISTMONK_db__user=listmonk -e LISTMONK_db__password=restore-test -e LISTMONK_db__database=listmonk \
+  -e LISTMONK_db__ssl_mode=disable "$IMAGE" ./listmonk --config '' >/dev/null
+for i in $(seq 1 30); do
+  docker exec $NAME wget -q -O /dev/null http://localhost:9000/health 2>/dev/null && break
+  [[ $i == 30 ]] && { echo "restored listmonk never answered /health"; docker logs --tail 20 $NAME 2>&1 | grep -v AKIA; exit 1; }
+  sleep 2
+done
+echo "    /health: ok"
+
+q() { docker exec "$1" psql -U listmonk -d listmonk -t -A -c "$2"; }
+echo "    counts (restored | live; live may be newer than the snapshot):"
+for t in lists subscribers campaigns templates users; do
+  printf '    %-12s %5s | %s\n' "$t" "$(q $NAME-db "SELECT count(*) FROM $t")" "$(q sgnl-listmonk-postgres "SELECT count(*) FROM $t")"
+done
+check="SELECT (SELECT value#>>'{}' FROM settings WHERE key='app.root_url') || ' oidc=' ||
+  (SELECT value->>'enabled' FROM settings WHERE key='security.oidc') || ' ses=' ||
+  (SELECT (value->>'enabled') || '/' || jsonb_array_length(value->'topic_arns') FROM settings WHERE key='bounce.ses')"
+restored=$(q $NAME-db "$check"); live=$(q sgnl-listmonk-postgres "$check")
+echo "    settings: $restored"
+[[ $restored == "$live" ]] || { echo "==> restore test FAILED: settings differ from live ($live)"; exit 1; }
+
+U=$T/staging/sgnl_listmonk_uploads
+live_files=$(find /var/lib/docker/volumes/sgnl_listmonk_uploads/_data -type f | wc -l)
+backup_files=$( [[ -d $U ]] && find "$U" -type f | wc -l || echo 0)
+echo "    uploads: $backup_files files in the backup, $live_files live"
+echo "==> restore test OK (scratch copy removed)"
+REMOTE

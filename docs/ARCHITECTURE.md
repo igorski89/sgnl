@@ -187,6 +187,9 @@ that names your instance (run it before contributing back).
 5. Every vendor image in `docker/*/Dockerfile` is pinned to an exact
    tag that was verified to exist on 2026-10-07. Bump them deliberately
    (Stalwart and Bulwark move fast and have renamed images before).
+   `bin/sgnl-image-updates` (monthly) lists newer versions of every
+   pinned image: the newest in the current major (usually safe, often
+   security fixes) and the newest major (read the notes first).
 
 ## Deferred / not built, and why
 

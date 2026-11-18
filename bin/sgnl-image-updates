@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Lists newer versions of every pinned image: the vendor images in
+docker/*/Dockerfile (what Kamal deploys), the accessory images in
+config/deploy.*.yml (databases, monitoring) and the images scripts run
+(restic, ...). Read-only: asks each registry for its tags through
+skopeo (in Docker), changes nothing.
+
+  bin/sgnl-image-updates          # all images
+  bin/sgnl-image-updates stalwart # only images whose name contains this
+
+Per image, among tags of the same shape (same "v" prefix, same number of
+version parts, same suffix such as -alpine or -rootless): the newest in
+the current major (usually safe, often security fixes), the newest
+major ("MAJOR": read the release notes first; Postgres majors also need
+a dump and restore), and for a pre-release (-beta.N, -rc.N) the newest
+release. Run monthly; bump in the
+file the image is pinned in, then deploy as usual.
+"""
+import glob, json, os, re, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+SKOPEO = "quay.io/skopeo/stable:v1.20.0"
+VER = re.compile(r"^(v?)(\d+(?:\.\d+)*)(.*)$")
+PRE = re.compile(r"^-(alpha|beta|rc)\.?\d*$")
+
+
+def pinned():
+    """{image reference: [files that pin it]}"""
+    found = {}
+    def add(ref, f):
+        if ":" in ref.split("/")[-1] and "<%" not in ref and "${" not in ref:
+            rel = os.path.relpath(f, ROOT)
+            if rel not in found.setdefault(ref, []):
+                found[ref].append(rel)
+    for f in glob.glob(os.path.join(ROOT, "docker/*/Dockerfile")):
+        froms = [l.split()[1] for l in open(f) if l.startswith("FROM ")]
+        if froms:
+            add(froms[-1], f)   # the image that ships (earlier ones are build stages)
+    for f in glob.glob(os.path.join(ROOT, "config/deploy.*.yml")):
+        for m in re.finditer(r'^\s*image:\s*"?([^"\s]+)"?', open(f).read(), re.M):
+            add(m.group(1), f)
+    for f in glob.glob(os.path.join(ROOT, "bin/*")) + glob.glob(os.path.join(ROOT, "host/*/*")):
+        try:
+            text = open(f).read()
+        except (UnicodeDecodeError, IsADirectoryError):
+            continue
+        for m in re.finditer(r'(?:IMAGE|image)\s*=\s*"?([a-z0-9./_-]+:[A-Za-z0-9._-]+)"?', text):
+            add(m.group(1), f)
+    return found
+
+
+def tags(repo):
+    r = subprocess.run(["docker", "run", "--rm", SKOPEO, "list-tags", "docker://" + repo],
+                       capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "skopeo failed")
+    return json.loads(r.stdout)["Tags"]
+
+
+def parse(tag):
+    m = VER.match(tag)
+    return (m.group(1), tuple(int(x) for x in m.group(2).split(".")), m.group(3)) if m else None
+
+
+def main():
+    only = sys.argv[1] if len(sys.argv) > 1 else ""
+    images = {k: v for k, v in sorted(pinned().items()) if only in k}
+    by_repo = {}
+    for ref, files in images.items():
+        repo, tag = ref.rsplit(":", 1)
+        by_repo.setdefault(repo, []).append((tag, files))
+    rows = []
+    for repo, pins in sorted(by_repo.items()):
+        try:
+            all_tags = tags(repo)
+        except RuntimeError as e:
+            rows.append((repo, ", ".join(t for t, _ in pins), f"? ({e})", ""))
+            continue
+        parsed = [(t, parse(t)) for t in all_tags]
+        for tag, files in pins:
+            cur = parse(tag)
+            if not cur:
+                rows.append((repo, tag, "? (not a version tag)", ", ".join(files)))
+                continue
+            pre, nums, suf = cur
+            same = [(p[1], t) for t, p in parsed if p and p[0] == pre and len(p[1]) == len(nums) and p[2] == suf]
+            notes = []
+            minor = max((x for x in same if x[0] > nums and x[0][0] == nums[0]), default=None)
+            major = max((x for x in same if x[0][0] > nums[0]), default=None)
+            if minor:
+                notes.append(minor[1])
+            if major:
+                notes.append(f"{major[1]} MAJOR")
+            if PRE.match(suf):
+                rel = max(((p[1], t) for t, p in parsed if p and p[0] == pre and len(p[1]) == len(nums)
+                           and p[2] == "" and p[1] >= nums), default=None)
+                if rel:
+                    notes.append(f"release {rel[1]}")
+            rows.append((repo, tag, ", ".join(notes) or "up to date", ", ".join(files)))
+    w = [max(len(r[i]) for r in rows) for i in range(3)] if rows else [0, 0, 0]
+    for r in rows:
+        print(f"{r[0]:<{w[0]}}  {r[1]:<{w[1]}}  {r[2]:<{w[2]}}  {r[3]}")
+
+
+if __name__ == "__main__":
+    main()

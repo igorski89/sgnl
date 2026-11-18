@@ -23,11 +23,24 @@ exists, the personal folder "SGNL infra"), read through
 
 **Restarting without a deploy** (`kamal app boot`, `kamal app
 reboot`) uses the image tagged with the current commit. Right after a
-fresh clone, or the 2026-11 repo split, no such image exists yet: pass
-the running one, e.g. `kamal app boot -c config/deploy.<name>.yml
---version <tag>` (tag from `docker ps` on the server: the part after
-the image's `:`). A normal `kamal deploy` builds the current tag, after
-which plain boots work again.
+fresh clone no such image exists yet: pass the running one, e.g. `kamal
+app boot -c config/deploy.<name>.yml --version <tag>` (tag from `docker
+ps` on the server: the part after the image's `:`). A normal `kamal
+deploy` builds the current tag, after which plain boots work again.
+
+**Redeploying everything** (e.g. after a fresh clone; done 2026-11-18,
+~5 min): least critical first, one at a time, check each. Kamal starts
+the new container before stopping the old one, which two apps can't
+take: **Forgejo and Stalwart need `kamal app stop -c ...` first**, then
+`kamal deploy` (~10 s and ~30 s down; incoming mail waits in SES/S3).
+
+```bash
+for a in dashy bulwark listmonk monitoring collabora opencloud vaultwarden keycloak; do
+  bin/sgnl-env kamal deploy -c config/deploy.$a.yml || break; done
+for a in forgejo stalwart; do
+  bin/sgnl-env kamal app stop -c config/deploy.$a.yml &&
+  bin/sgnl-env kamal deploy -c config/deploy.$a.yml || break; done
+```
 
 - [ ] AWS: scoped IAM user, not root — `../aws/bootstrap/README.md`. Use
       the current `terraform-policy.json` (it includes the DLQ/SQS
