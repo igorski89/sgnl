@@ -102,6 +102,16 @@ her email to anna@example.com and swaps `sgnl_invited` for the
 groups. Commit `stalwart/plan.ndjson`. Tell her on another channel
 (WhatsApp, in person) to expect the email and to say when she's done.
 
+`finish-invite` also adds her to the company's password vault
+(`bin/sgnl-vault-sync`, see "Shared passwords"): Vaultwarden emails her
+an invitation to anna@example.com. Once she has accepted it (step 7 of
+her side), run the sync once more, which confirms her; until then she
+sees none of the company's passwords:
+
+```bash
+bin/sgnl-vault-sync
+```
+
 ### Personal guide (PDF)
 
 Each person gets a personalized guide: no secrets in it, written so it can
@@ -137,6 +147,9 @@ weasyprint <user>.html <user>-onboarding.pdf && rm <user>.html
    only they know and nobody can recover. Then the official Bitwarden
    apps/extensions: "Self-hosted", server URL
    `https://vault.sgnl.example.com`, log in with single sign-on.
+7. In the new mailbox: the email "Join <company>" from the password
+   vault → accept (the link is valid 5 days), then tell the admin, who
+   confirms it. The company's shared passwords then appear in the vault.
 
 Pitfalls:
 - **Password managers fill in an old password**; 3 wrong ones in 2 min
@@ -207,7 +220,13 @@ collections they see is config, not clicks:
   Keycloak `sgnl_users`). `bin/sgnl-kc` runs the sync after
   finish-invite, group changes, disable and enable, so a new person is
   invited automatically; they accept the invite email once, and the next
-  sync confirms them. Disabled people are revoked; owners are never
+  sync confirms them.
+- When the sync runs: on every people change (through `bin/sgnl-kc`),
+  plus once by hand after someone accepts their invite (Vaultwarden
+  doesn't tell us). No timer: confirming needs an owner's unlocked vault,
+  which no unattended job has. Changes clicked in Keycloak's admin
+  console bypass `bin/sgnl-kc`: run `bin/sgnl-vault-sync` afterwards.
+  An expired invite: Admin Console → Members → ⋮ → "Resend invitation". Disabled people are revoked; owners are never
   touched.
 - Collections listed in `org.yaml` are created and their group access
   set (`view`, `view-hidden`, `edit`, `manage`); others are left alone.
