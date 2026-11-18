@@ -244,17 +244,16 @@ SMTP with the header `X-SES-CONFIGURATION-SET: <prefix>-campaigns`; that
 configuration set publishes bounces and complaints to the SNS topic
 `<prefix>-campaigns-events`, whose HTTPS subscription
 (`/webhooks/service/ses`) listmonk confirms itself. Hard bounces and
-complaints blocklist the address (complaints only from listmonk v7:
-6.2 rejects configuration-set complaint events; until then they arrive
-by email at the sending address). Order on a fresh instance: `./tf apply
+complaints blocklist the address (complaints need listmonk 7; 6.x
+rejected configuration-set complaint events). Order on a fresh instance: `./tf apply
 -target=aws_sesv2_configuration_set_event_destination.campaigns_bounces`,
 then `bin/sgnl-listmonk-setup` (turns on the SES webhook), then `./tf
 apply` (the subscription). Only campaign mail is affected; the domain
 identity and all other company mail are not. Test with SES's simulator
 addresses (`bounce@`, `complaint@simulator.amazonses.com`) as
-subscribers of a test list. listmonk 6.2 can't restrict which SNS topic
-may call the webhook (v7 adds "allowed SNS topic ARNs"). Use double
-opt-in for public lists.
+subscribers of a test list. The webhook only accepts our topic
+(`bounce.ses.topic_arns`, from the Terraform output). Use double opt-in
+for public lists.
 
 ## 5b. Forgejo
 
