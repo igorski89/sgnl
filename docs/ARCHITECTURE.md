@@ -21,14 +21,14 @@ there).
 
 | Service | Image | Subdomain | Role |
 | --- | --- | --- | --- |
-| Keycloak | `quay.io/keycloak/keycloak:26.7.5` + `postgres:17.10-alpine` | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, account page; realm as code in `keycloak/realm.yaml` |
+| Keycloak | `quay.io/keycloak/keycloak:26.7.5` + `postgres:18.7-alpine` | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, account page; realm as code in `keycloak/realm.yaml` |
 | Stalwart | `stalwartlabs/stalwart:v0.16.25` | `mail.sgnl.example.com` | IMAP (993), JMAP, submission (465) — mail routing itself (both directions) is AWS SES, see below |
 | Bulwark | `ghcr.io/bulwarkmail/webmail:1.12.0` | `inbox.sgnl.example.com` | JMAP webmail client |
 | Forgejo | `codeberg.org/forgejo/forgejo:15.0.9-rootless` | `git.sgnl.example.com` | Git forge: repos, issues, PRs, LFS (local disk). HTTPS only |
 | Vaultwarden | `vaultwarden/server:1.37.4` | `vault.sgnl.example.com` | Password manager (Bitwarden-compatible) |
 | Dashy | `lissy93/dashy:4.7.0` | `home.sgnl.example.com` | Landing page after login: tiles by group, status lights |
 | OpenCloud | `opencloudeu/opencloud:7.2.4` | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
-| listmonk | `listmonk/listmonk:v7.0.0-beta.2` + `postgres:17.10-alpine` | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES (sending not set up yet) |
+| listmonk | `listmonk/listmonk:v7.0.0-beta.2` + `postgres:18.7-alpine` | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES (sending not set up yet) |
 | Collabora Online (CODE) | `collabora/code:26.04.4.2.1` | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
 
 Security model, per-service threats and hardening: `docs/SECURITY.md`.
