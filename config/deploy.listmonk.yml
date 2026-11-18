@@ -66,13 +66,17 @@ env:
 # up as a pg_dump (host/backup/sgnl-backup.sh), like Keycloak's.
 accessories:
   postgres:
-    image: postgres:17.10-alpine
+    # Postgres 18 (2026-11-18, from 17 by dump + restore): 18's image keeps
+    # its data under /var/lib/postgresql/18/docker, so the volume is
+    # mounted at /var/lib/postgresql. The 17 volume (sgnl_listmonk_db) is
+    # kept until 18 has run a while; then: docker volume rm sgnl_listmonk_db.
+    image: postgres:18.7-alpine
     host: <%= ENV.fetch("SGNL_HOST") %>
     options:
       network-alias: sgnl-listmonk-db
       memory: 256m
     volumes:
-      - "sgnl_listmonk_db:/var/lib/postgresql/data"
+      - "sgnl_listmonk_db18:/var/lib/postgresql"
     env:
       clear:
         TZ: "<%= ENV.fetch("SGNL_TZ") %>"
