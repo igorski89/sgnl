@@ -545,7 +545,10 @@ clients:
       - "https://listmonk.{{SGNL_APPS_DOMAIN}}/auth/oidc"
     webOrigins: []
     attributes:
-      pkce.code.challenge.method: S256
+      # listmonk sends no PKCE (it's a confidential client: the secret
+      # protects the code exchange). Explicitly empty, not just absent:
+      # the import doesn't remove attributes it isn't given.
+      pkce.code.challenge.method: ""
       post.logout.redirect.uris: "https://listmonk.{{SGNL_APPS_DOMAIN}}/admin/login"
     defaultClientScopes: [basic, acr, roles, web-origins, profile, email, groups]
     optionalClientScopes: []
