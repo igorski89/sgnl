@@ -7,6 +7,12 @@
 
 resource "aws_sesv2_configuration_set" "campaigns" {
   configuration_set_name = "${var.name_prefix}-campaigns"
+
+  # AWS reports default delivery options (max_delivery_seconds = 0) that
+  # the provider would "remove" on every plan; we don't manage them.
+  lifecycle {
+    ignore_changes = [delivery_options]
+  }
 }
 
 resource "aws_sns_topic" "campaigns_events" {

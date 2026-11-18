@@ -1,10 +1,7 @@
-# --- Domain identity: deliberately NOT managed here -------------------------
-# example.com was verified in eu-central-1 before this project
-# (Easy DKIM CNAMEs, custom MAIL FROM mail.example.com, production
-# access - all live, checked 2026-10-08) and Gmail's "send mail as" uses
-# it too. Keeping it out of Terraform means a `destroy` here can never
-# take it down. Receiving needs the domain verified in this region,
-# which it already is.
+# --- Domain identity: see ses-identity.tf ------------------------------------
+# Verified by hand before this project; adopted into Terraform 2026-11-18
+# with prevent_destroy, so a `destroy` here can still never take it down.
+# Receiving needs the domain verified in this region, which it is.
 
 # --- Receiving: rule set + rule ---------------------------------------------
 # Only one receipt rule set can be active per region; there was none in
