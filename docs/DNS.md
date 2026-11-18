@@ -35,7 +35,7 @@ connects to `mail.sgnl` directly.
 | A | `office.sgnl` | `<VPS_IP>` | Collabora Online (office editor for OpenCloud) |
 | A | `id.sgnl` | `<VPS_IP>` | Keycloak: login for every app (created 2026-10-18). `auth.sgnl` (Authelia) was deleted 2026-10-19 |
 | A | `monitor.sgnl` | `<VPS_IP>` | Grafana (monitoring, `config/deploy.monitoring.yml`; created 2026-10-24, DNS only) |
-| A | `listmonk.sgnl` | `<VPS_IP>` | listmonk (newsletters, `config/deploy.listmonk.yml`; created 2026-11-18 via the Cloudflare API, DNS only) |
+| A | `listmonk.sgnl` | `<VPS_IP>` | listmonk (campaigns, `config/deploy.listmonk.yml`; created 2026-11-18 via the Cloudflare API, DNS only) |
 
 Stalwart also writes, by itself, `_acme-challenge.mail.sgnl` (temporary,
 during certificate issuance) and `_smtp._tls.sgnl` (TLS-RPT) using the

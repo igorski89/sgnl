@@ -21,12 +21,12 @@ output "forwarder_dlq_url" {
   value       = aws_sqs_queue.forwarder_dlq.url
 }
 
-output "newsletter_configuration_set" {
+output "campaigns_configuration_set" {
   description = "SES configuration set listmonk's mail carries (X-SES-CONFIGURATION-SET)."
-  value       = aws_sesv2_configuration_set.newsletter.configuration_set_name
+  value       = aws_sesv2_configuration_set.campaigns.configuration_set_name
 }
 
-output "newsletter_events_topic_arn" {
-  description = "SNS topic with newsletter bounces/complaints; allowed in listmonk's bounce settings."
-  value       = aws_sns_topic.newsletter_events.arn
+output "campaigns_events_topic_arn" {
+  description = "SNS topic with campaign bounces/complaints; allowed in listmonk's bounce settings."
+  value       = aws_sns_topic.campaigns_events.arn
 }

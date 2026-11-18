@@ -527,10 +527,10 @@ clients:
     authenticationFlowBindingOverrides:
       browser: sgnl-apps
 
-  # listmonk (newsletters): users are matched by email to existing
+  # listmonk (campaigns): users are matched by email to existing
   # listmonk accounts (no auto-create, bin/sgnl-listmonk-setup).
   - clientId: listmonk
-    name: "Newsletters (listmonk.{{SGNL_APPS_DOMAIN}})"
+    name: "Campaigns (listmonk.{{SGNL_APPS_DOMAIN}})"
     enabled: true
     publicClient: false
     clientAuthenticatorType: client-secret

@@ -224,7 +224,7 @@ Accounts are linked by `"<issuer>/<sub>"` (table `sso_users`): changing
 `SSO_AUTHORITY` needs the same change in that table (done for the
 Keycloak switch, `../instance/docs/PLAN-keycloak.md`).
 
-## 5a. listmonk (newsletters)
+## 5a. listmonk (campaigns)
 
 ```bash
 kamal accessory boot postgres -c config/deploy.listmonk.yml   # its own Postgres
@@ -239,15 +239,17 @@ DNS: `listmonk.sgnl` (DNS.md). Login: "SGNL" on the login page, matched by
 email to an existing listmonk account (no auto-created accounts: add
 people in listmonk → Users with their `<user>@<domain>` email).
 
-**Sending** (`aws/newsletter.tf`, then `bin/sgnl-listmonk-setup`): SES
-SMTP with the header `X-SES-CONFIGURATION-SET: <prefix>-newsletter`; that
+**Sending** (`aws/campaigns.tf`, then `bin/sgnl-listmonk-setup`): SES
+SMTP with the header `X-SES-CONFIGURATION-SET: <prefix>-campaigns`; that
 configuration set publishes bounces and complaints to the SNS topic
-`<prefix>-newsletter-events`, whose HTTPS subscription
+`<prefix>-campaigns-events`, whose HTTPS subscription
 (`/webhooks/service/ses`) listmonk confirms itself. Hard bounces and
-complaints blocklist the address. Order on a fresh instance: `./tf apply
--target=aws_sesv2_configuration_set_event_destination.newsletter_bounces`,
+complaints blocklist the address (complaints only from listmonk v7:
+6.2 rejects configuration-set complaint events; until then they arrive
+by email at the sending address). Order on a fresh instance: `./tf apply
+-target=aws_sesv2_configuration_set_event_destination.campaigns_bounces`,
 then `bin/sgnl-listmonk-setup` (turns on the SES webhook), then `./tf
-apply` (the subscription). Only newsletter mail is affected; the domain
+apply` (the subscription). Only campaign mail is affected; the domain
 identity and all other company mail are not. Test with SES's simulator
 addresses (`bounce@`, `complaint@simulator.amazonses.com`) as
 subscribers of a test list. listmonk 6.2 can't restrict which SNS topic

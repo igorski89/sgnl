@@ -12,11 +12,11 @@ Sets:
   the super admin  (LISTMONK_ADMIN_USER = SGNL_ADMIN_USER) gets the email
                    <SGNL_ADMIN_USER>@<SGNL_DOMAIN>, so that person's
                    Keycloak login opens it
-  app.from_email   "<SGNL_ORG_NAME> <newsletter@<SGNL_DOMAIN>>" (replies land
+  app.from_email   "<SGNL_ORG_NAME> <campaigns@<SGNL_DOMAIN>>" (replies land
                    in the domain's catch-all)
   smtp             one server: SES (SGNL_SMTP_HOST:587, STARTTLS, the
                    ses-smtp-* credentials), header X-SES-CONFIGURATION-SET:
-                   <prefix>-newsletter (aws/newsletter.tf)
+                   <prefix>-campaigns (aws/campaigns.tf)
   bounce.*         processing on, SES webhook on; hard bounce or complaint
                    -> blocklist, 2 soft bounces -> nothing (Amazon's advice)
 then restarts listmonk, which reads settings at start. SMTP changes made
@@ -35,9 +35,9 @@ I = instance.load()
 HOST, APPS, DOMAIN, REALM, ADMIN = (I["SGNL_HOST"], I["SGNL_APPS_DOMAIN"], I["SGNL_DOMAIN"],
                                     I["SGNL_REALM"], I["SGNL_ADMIN_USER"])
 # Sending: SES SMTP, every message tagged with the configuration set that
-# routes its bounces/complaints back to listmonk (aws/newsletter.tf).
-FROM = f'{I["SGNL_ORG_NAME"]} <newsletter@{DOMAIN}>'
-CONFIG_SET = I["SGNL_PREFIX"] + "-newsletter"
+# routes its bounces/complaints back to listmonk (aws/campaigns.tf).
+FROM = f'{I["SGNL_ORG_NAME"]} <campaigns@{DOMAIN}>'
+CONFIG_SET = I["SGNL_PREFIX"] + "-campaigns"
 
 
 def secret(name):

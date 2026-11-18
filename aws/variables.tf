@@ -53,6 +53,6 @@ variable "name_prefix" {
 }
 
 variable "listmonk_host" {
-  description = "listmonk's host; SES bounce/complaint events for newsletters go to https://<this>/webhooks/service/ses. Set by ./tf from SGNL_APPS_DOMAIN."
+  description = "listmonk's host; SES bounce/complaint events for campaigns go to https://<this>/webhooks/service/ses. Set by ./tf from SGNL_APPS_DOMAIN."
   type        = string
 }

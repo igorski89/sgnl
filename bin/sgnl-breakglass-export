@@ -48,6 +48,7 @@ LIVE = {
     "forgejo-admin-token":             ("SGNL Forgejo admin API token", f"https://git.{S}", "Used by bin/sgnl-user-suspend."),
     "listmonk-postgres-password":      ("SGNL listmonk Postgres", f"https://listmonk.{S}", "listmonk database password."),
     "listmonk-admin-password":         ("SGNL listmonk local admin", f"https://listmonk.{S}", "Break-glass super admin; everyday login is Keycloak."),
+    "listmonk-api-token":              ("SGNL listmonk API token", f"https://listmonk.{S}", "API user listmonk_api (listmonk -> Users). Used by the agent for listmonk's API."),
     "keycloak-listmonk-client-secret": ("SGNL Keycloak client: listmonk", f"https://listmonk.{S}", "OIDC client secret."),
     "vaultwarden-org-client-id":       ("SGNL Vaultwarden organisation API client ID", f"https://vault.{S}", "Organisation API key (Admin Console -> Settings -> Organisation info). Members and groups sync from Keycloak."),
     "vaultwarden-org-client-secret":   ("SGNL Vaultwarden organisation API secret", f"https://vault.{S}", "Organisation API key; can be rotated in the Admin Console."),
