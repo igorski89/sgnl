@@ -9,7 +9,7 @@
 #      pause is what makes the copy consistent (RocksDB and SQLite are
 #      crash-safe, so a frozen copy restores like after a power cut),
 #      and the bulk pass keeps it to a second or two as data grows.
-#      Keycloak's Postgres is dumped (pg_dump) into staging instead.
+#      Keycloak's and listmonk's Postgres are dumped (pg_dump) into staging.
 #   2. restic (official image) backs up staging + /opt/sgnl config,
 #      encrypted on this host, then applies retention.
 #   3. Any failure emails ALERT_TO through SES.
@@ -34,6 +34,7 @@ APPS=(
   "sgnl-vaultwarden sgnl_vaultwarden_data"
   "sgnl-opencloud sgnl_opencloud_config"
   "sgnl-opencloud sgnl_opencloud_data"
+  "sgnl-listmonk sgnl_listmonk_uploads"
 )
 
 notify_failure() {
@@ -85,19 +86,23 @@ for app in "${APPS[@]}"; do
   snapshot_volume $app
 done
 
-# Keycloak's Postgres: a dump, not a file copy (a copy of a running
-# Postgres is only crash-consistent). pg_dump takes one consistent
-# snapshot without blocking Keycloak, and runs inside the server's own
-# container, so client and server versions always match.
-echo "==> dumping Keycloak's database"
-if docker ps -q --filter name='^sgnl-keycloak-postgres$' | grep -q .; then
-  mkdir -p "$STAGING/keycloak"
-  docker exec sgnl-keycloak-postgres pg_dump -U keycloak -Fc keycloak > "$STAGING/keycloak/keycloak.dump.tmp"
-  mv "$STAGING/keycloak/keycloak.dump.tmp" "$STAGING/keycloak/keycloak.dump"
-  echo "keycloak.dump: $(du -h "$STAGING/keycloak/keycloak.dump" | cut -f1)"
-else
-  notify_failure "sgnl-keycloak-postgres is not running; Keycloak's last dump is kept as is"
-fi
+# Postgres databases (Keycloak, listmonk): a dump, not a file copy (a copy
+# of a running Postgres is only crash-consistent). pg_dump takes one
+# consistent snapshot without blocking the app, and runs inside the
+# server's own container, so client and server versions always match.
+dump_pg() { # <name> <container> <db user = db name>
+  echo "==> dumping $1's database"
+  if docker ps -q --filter name="^$2\$" | grep -q .; then
+    mkdir -p "$STAGING/$1"
+    docker exec "$2" pg_dump -U "$3" -Fc "$3" > "$STAGING/$1/$1.dump.tmp"
+    mv "$STAGING/$1/$1.dump.tmp" "$STAGING/$1/$1.dump"
+    echo "$1.dump: $(du -h "$STAGING/$1/$1.dump" | cut -f1)"
+  else
+    notify_failure "$2 is not running; $1's last dump is kept as is"
+  fi
+}
+dump_pg keycloak sgnl-keycloak-postgres keycloak
+dump_pg listmonk sgnl-listmonk-postgres listmonk
 
 echo "==> restic backup"
 restic cat config >/dev/null 2>&1 || restic init

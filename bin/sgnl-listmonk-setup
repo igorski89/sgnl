@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""listmonk settings that live in its database, as code. Idempotent; run
+after `kamal setup -c config/deploy.listmonk.yml` and whenever these change.
+
+  bin/sgnl-listmonk-setup
+
+Sets:
+  app.root_url     https://listmonk.<SGNL_APPS_DOMAIN>
+  security.oidc    Keycloak login (client "listmonk", keycloak/realm.yaml);
+                   no auto-created accounts: Keycloak users log in to the
+                   listmonk account with the same email
+  the super admin  (LISTMONK_ADMIN_USER = SGNL_ADMIN_USER) gets the email
+                   <SGNL_ADMIN_USER>@<SGNL_DOMAIN>, so that person's
+                   Keycloak login opens it
+then restarts listmonk, which reads settings at start.
+
+Values are merged into the stored JSON (keys listmonk adds in later
+versions are kept). SQL goes to psql on stdin over SSH, so the client
+secret is never on a command line. Sending (SMTP, bounces) is not set
+here yet: docs/DEPLOY.md "listmonk".
+"""
+import json, os, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402
+I = instance.load()
+HOST, APPS, DOMAIN, REALM, ADMIN = (I["SGNL_HOST"], I["SGNL_APPS_DOMAIN"], I["SGNL_DOMAIN"],
+                                    I["SGNL_REALM"], I["SGNL_ADMIN_USER"])
+
+
+def secret(name):
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-secret"), name], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("sgnl-listmonk-setup: " + r.stderr.strip())
+    return r.stdout
+
+
+def q(s):
+    """A SQL literal: dollar-quoted, so JSON and secrets need no escaping."""
+    tag = "$sgnl$"
+    if tag in s:
+        sys.exit("sgnl-listmonk-setup: value contains the quoting tag")
+    return f"{tag}{s}{tag}"
+
+
+oidc = {"enabled": True, "provider_url": f"https://id.{APPS}/realms/{REALM}",
+        "provider_name": "SGNL", "client_id": "listmonk",
+        "client_secret": secret("keycloak-listmonk-client-secret"),
+        "auto_create_users": False}
+sql = f"""\\set ON_ERROR_STOP on
+BEGIN;
+UPDATE settings SET value = to_jsonb({q(f"https://listmonk.{APPS}")}::text), updated_at = NOW()
+  WHERE key = 'app.root_url';
+UPDATE settings SET value = value || {q(json.dumps(oidc))}::jsonb, updated_at = NOW()
+  WHERE key = 'security.oidc';
+UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = NOW()
+  WHERE username = {q(ADMIN)} AND email IS DISTINCT FROM {q(f"{ADMIN}@{DOMAIN}")};
+SELECT 'root_url ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.root_url');
+SELECT 'oidc ' || (SELECT (value->>'enabled') || ' ' || (value->>'provider_url') FROM settings WHERE key = 'security.oidc');
+SELECT 'admin ' || username || ' <' || email || '>' FROM users WHERE username = {q(ADMIN)};
+COMMIT;
+"""
+remote = ("set -e; docker exec -i sgnl-listmonk-postgres psql -q -t -A -U listmonk -d listmonk; "
+          "c=$(docker ps -q --filter label=service=sgnl-listmonk --filter label=role=web); "
+          "[ -n \"$c\" ] && docker restart $c >/dev/null && echo restarted listmonk")
+r = subprocess.run(["ssh", f"root@{HOST}", remote], input=sql, text=True, capture_output=True)
+print(r.stdout.strip())
+if r.returncode:
+    sys.exit("sgnl-listmonk-setup: " + r.stderr.strip()[-400:])

@@ -1,0 +1,82 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# listmonk (listmonk.sgnl): newsletters and campaigns, mailing lists,
+# double opt-in, subscriber self-service. Login via Keycloak (client
+# "listmonk", keycloak/realm.yaml); the local super admin
+# (LISTMONK_ADMIN_PASSWORD) is break-glass only. Settings that live in
+# listmonk's database (root URL, OIDC) are set by bin/sgnl-listmonk-setup.
+# Sending (SMTP via SES, a separate sending domain, bounce webhook) is not
+# configured yet: docs/DEPLOY.md "listmonk".
+#
+#   kamal accessory boot postgres -c config/deploy.listmonk.yml   # once, first
+#   kamal setup -c config/deploy.listmonk.yml
+#   bin/sgnl-listmonk-setup
+service: sgnl-listmonk
+image: sgnl-listmonk
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    # Creates the schema on the first start (idempotent), applies
+    # upgrades, then runs; --config '' = configuration from env only.
+    cmd: sh -c "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && exec ./listmonk --config ''"
+    options:
+      network-alias: sgnl-listmonk
+      memory: 256m
+
+proxy:
+  ssl: true
+  host: listmonk.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 9000
+  healthcheck:
+    path: /health
+
+deploy_timeout: 120
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  dockerfile: docker/listmonk/Dockerfile
+  context: docker/listmonk
+
+# Uploaded media (images in campaigns); in the nightly backup.
+volumes:
+  - "sgnl_listmonk_uploads:/listmonk/uploads"
+
+env:
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    LISTMONK_app__address: "0.0.0.0:9000"
+    LISTMONK_db__host: "sgnl-listmonk-db"
+    LISTMONK_db__port: "5432"
+    LISTMONK_db__user: "listmonk"
+    LISTMONK_db__database: "listmonk"
+    LISTMONK_db__ssl_mode: "disable"
+    LISTMONK_db__max_open: "10"
+    LISTMONK_db__max_idle: "10"
+    # Super admin created on the first start only (break-glass).
+    LISTMONK_ADMIN_USER: "<%= ENV.fetch("SGNL_ADMIN_USER") %>"
+  secret:
+    - LISTMONK_db__password:LISTMONK_POSTGRES_PASSWORD
+    - LISTMONK_ADMIN_PASSWORD
+
+# listmonk's database: internal only, reached as sgnl-listmonk-db. Backed
+# up as a pg_dump (host/backup/sgnl-backup.sh), like Keycloak's.
+accessories:
+  postgres:
+    image: postgres:17.10-alpine
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-listmonk-db
+      memory: 256m
+    volumes:
+      - "sgnl_listmonk_db:/var/lib/postgresql/data"
+    env:
+      clear:
+        TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+        POSTGRES_USER: "listmonk"
+        POSTGRES_DB: "listmonk"
+      secret:
+        - POSTGRES_PASSWORD:LISTMONK_POSTGRES_PASSWORD

@@ -28,6 +28,7 @@ there).
 | Vaultwarden | `vaultwarden/server:1.37.4` | `vault.sgnl.example.com` | Password manager (Bitwarden-compatible) |
 | Dashy | `lissy93/dashy:4.7.0` | `home.sgnl.example.com` | Landing page after login: tiles by group, status lights |
 | OpenCloud | `opencloudeu/opencloud:7.2.4` | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
+| listmonk | `listmonk/listmonk:v6.2.0` + `postgres:17.10-alpine` | `listmonk.sgnl.example.com` | Newsletters and campaigns: lists, double opt-in, templates; sends through SES (sending not set up yet) |
 | Collabora Online (CODE) | `collabora/code:26.04.4.2.1` | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
 
 Security model, per-service threats and hardening: `docs/SECURITY.md`.

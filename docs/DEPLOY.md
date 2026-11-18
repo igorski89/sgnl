@@ -224,6 +224,28 @@ Accounts are linked by `"<issuer>/<sub>"` (table `sso_users`): changing
 `SSO_AUTHORITY` needs the same change in that table (done for the
 Keycloak switch, `../instance/docs/PLAN-keycloak.md`).
 
+## 5a. listmonk (newsletters)
+
+```bash
+kamal accessory boot postgres -c config/deploy.listmonk.yml   # its own Postgres
+kamal setup -c config/deploy.listmonk.yml   # first start creates the schema and the
+                                            # super admin (SGNL_ADMIN_USER, break-glass)
+bin/sgnl-keycloak-apply                     # client "listmonk"
+bin/sgnl-listmonk-setup                     # root URL, Keycloak login, admin's email
+bin/sgnl-backup-install                     # nightly pg_dump + uploads volume
+```
+
+DNS: `listmonk.sgnl` (DNS.md). Login: "SGNL" on the login page, matched by
+email to an existing listmonk account (no auto-created accounts: add
+people in listmonk → Users with their `<user>@<domain>` email).
+
+**Not set up yet: sending.** Before the first campaign: a separate
+sending domain for bulk mail (its own SPF/DKIM/DMARC, so newsletter
+complaints never touch company mail), an SES configuration set for it,
+SMTP in listmonk → Settings → SMTP (the SES credentials), bounce
+processing via SES → SNS → `https://listmonk.sgnl.example.com/webhooks/service/ses`,
+and double opt-in on public lists.
+
 ## 5b. Forgejo
 
 ```bash

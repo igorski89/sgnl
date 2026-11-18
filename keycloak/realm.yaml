@@ -527,6 +527,31 @@ clients:
     authenticationFlowBindingOverrides:
       browser: sgnl-apps
 
+  # listmonk (newsletters): users are matched by email to existing
+  # listmonk accounts (no auto-create, bin/sgnl-listmonk-setup).
+  - clientId: listmonk
+    name: "Newsletters (listmonk.{{SGNL_APPS_DOMAIN}})"
+    enabled: true
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    secret: "{{KEYCLOAK_LISTMONK_CLIENT_SECRET}}"
+    standardFlowEnabled: true
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+    consentRequired: false
+    frontchannelLogout: true
+    redirectUris:
+      - "https://listmonk.{{SGNL_APPS_DOMAIN}}/auth/oidc"
+    webOrigins: []
+    attributes:
+      pkce.code.challenge.method: S256
+      post.logout.redirect.uris: "https://listmonk.{{SGNL_APPS_DOMAIN}}/admin/login"
+    defaultClientScopes: [basic, acr, roles, web-origins, profile, email, groups]
+    optionalClientScopes: []
+    authenticationFlowBindingOverrides:
+      browser: sgnl-apps
+
   # The agent (Claude, bin/sgnl-kc): client credentials only, no browser
   # login. Its rights are the realm-management roles on its service
   # account user below - people and groups, events; not realm settings.
