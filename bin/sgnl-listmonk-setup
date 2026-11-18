@@ -17,11 +17,14 @@ Sets:
   smtp             one server: SES (SGNL_SMTP_HOST:587, STARTTLS, the
                    ses-smtp-* credentials), header X-SES-CONFIGURATION-SET:
                    <prefix>-campaigns (aws/campaigns.tf)
-  bounce.*         processing on, SES webhook on; hard bounce or complaint
-                   -> blocklist, 2 soft bounces -> nothing (Amazon's advice)
+  bounce.*         processing on, SES webhook on and limited to our SNS topic
+                   (Terraform output campaigns_events_topic_arn); hard bounce
+                   or complaint -> blocklist, 2 soft bounces -> nothing
+                   (Amazon's advice)
 then restarts listmonk, which reads settings at start. SMTP changes made
 in listmonk's UI are overwritten by the next run: change them here.
 
+Written for listmonk 7 (from_email is a list, bounce.ses an object).
 Values are merged into the stored JSON (keys listmonk adds in later
 versions are kept). SQL goes to psql on stdin over SSH, so secrets are
 never on a command line.
@@ -47,6 +50,15 @@ def secret(name):
     return r.stdout
 
 
+def topic_arn():
+    """The SNS topic SES publishes campaign bounces/complaints to (aws/campaigns.tf)."""
+    r = subprocess.run(["./tf", "output", "-raw", "campaigns_events_topic_arn"], cwd=os.path.join(ROOT, "aws"),
+                       capture_output=True, text=True)
+    if r.returncode or not r.stdout.startswith("arn:aws:sns:"):
+        sys.exit("sgnl-listmonk-setup: no Terraform output campaigns_events_topic_arn (./tf apply in aws/ first)")
+    return r.stdout.strip()
+
+
 def q(s):
     """A SQL literal: dollar-quoted, so JSON and secrets need no escaping."""
     tag = "$sgnl$"
@@ -56,6 +68,7 @@ def q(s):
 
 
 oidc = {"enabled": True, "provider_url": f"https://id.{APPS}/realms/{REALM}",
+        "redirect_url": f"https://listmonk.{APPS}/auth/oidc",
         "provider_name": "SGNL", "client_id": "listmonk",
         "client_secret": secret("keycloak-listmonk-client-secret"),
         "auto_create_users": False}
@@ -73,18 +86,21 @@ UPDATE settings SET value = to_jsonb({q(f"https://listmonk.{APPS}")}::text), upd
   WHERE key = 'app.root_url';
 UPDATE settings SET value = value || {q(json.dumps(oidc))}::jsonb, updated_at = NOW()
   WHERE key = 'security.oidc';
-UPDATE settings SET value = to_jsonb({q(FROM)}::text), updated_at = NOW() WHERE key = 'app.from_email';
+UPDATE settings SET value = jsonb_build_array({q(FROM)}::text), updated_at = NOW() WHERE key = 'app.from_email';
 UPDATE settings SET value = {q(json.dumps(smtp))}::jsonb, updated_at = NOW() WHERE key = 'smtp';
 UPDATE settings SET value = 'true'::jsonb, updated_at = NOW()
-  WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled', 'bounce.ses_enabled');
+  WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled');
+UPDATE settings SET value = value || {q(json.dumps({"enabled": True, "topic_arns": [topic_arn()]}))}::jsonb, updated_at = NOW()
+  WHERE key = 'bounce.ses';
 UPDATE settings SET value = {q(json.dumps(bounce_actions))}::jsonb, updated_at = NOW() WHERE key = 'bounce.actions';
 UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = NOW()
   WHERE username = {q(ADMIN)} AND email IS DISTINCT FROM {q(f"{ADMIN}@{DOMAIN}")};
 SELECT 'root_url ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.root_url');
 SELECT 'oidc ' || (SELECT (value->>'enabled') || ' ' || (value->>'provider_url') FROM settings WHERE key = 'security.oidc');
-SELECT 'from ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.from_email');
+SELECT 'from ' || (SELECT value->>0 FROM settings WHERE key = 'app.from_email');
 SELECT 'smtp ' || (SELECT string_agg((e->>'host') || ':' || (e->>'port') || ' ' || (e->>'enabled'), ', ') FROM settings, jsonb_array_elements(value) e WHERE key = 'smtp');
-SELECT 'bounces ' || (SELECT string_agg(key || '=' || (value #>> '{{}}'), ' ' ORDER BY key) FROM settings WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled', 'bounce.ses_enabled'));
+SELECT 'bounces ' || (SELECT string_agg(key || '=' || (value #>> '{{}}'), ' ' ORDER BY key) FROM settings WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled'))
+  || ' ses=' || (SELECT (value->>'enabled') || ' topics=' || jsonb_array_length(value->'topic_arns') FROM settings WHERE key = 'bounce.ses');
 SELECT 'admin ' || username || ' <' || email || '>' FROM users WHERE username = {q(ADMIN)};
 COMMIT;
 """
