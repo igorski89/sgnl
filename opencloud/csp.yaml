@@ -1,5 +1,5 @@
 # OpenCloud's Content-Security-Policy (PROXY_CSP_CONFIG_FILE_LOCATION).
-# From opencloud-compose stable-7.2, with our hosts filled in: Keycloak
+# From opencloud-compose stable-7.2 (+ 9.1's blob: for media and styles), with our hosts filled in: Keycloak
 # (login, token calls) and Collabora (editor iframe). Dropped: the update
 # check and companion entries.
 directives:
@@ -35,6 +35,7 @@ directives:
     - '''self'''
   media-src:
     - '''self'''
+    - 'blob:'
   object-src:
     - '''self'''
     - 'blob:'
@@ -45,6 +46,7 @@ directives:
   style-src:
     - '''self'''
     - '''unsafe-inline'''
+    - 'blob:'
   worker-src:
     - '''self'''
     - 'blob:'
