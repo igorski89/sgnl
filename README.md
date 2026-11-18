@@ -80,7 +80,6 @@ real company. `instance.example/` is a complete example to start from.
 
 ```bash
 git clone https://github.com/igorski89/sgnl && cd sgnl
-cp .kamal/secrets.example .kamal/secrets
 cp -R instance.example instance    # then edit instance/sgnl.env
 ```
 

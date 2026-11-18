@@ -2,8 +2,8 @@
 # After every commit: push the bootstrap bundle (repo + secrets + Terraform
 # state) into the restic backups, in the background so the commit isn't
 # slowed down. On failure: a macOS notification; details in
-# .git/sgnl-bootstrap-push.log. Needs Vaultwarden unlocked in the shell
-# that commits (export BW_SESSION=$(bw unlock --raw)); if it's locked the
+# .git/sgnl-bootstrap-push.log. Needs Vaultwarden unlocked
+# (bin/sgnl-unlock, once a day); if it's locked the
 # push fails and notifies, on purpose. Skip once with SGNL_NO_BOOTSTRAP_PUSH=1.
 # Enabled per clone with: git config core.hooksPath .githooks, and in the
 # instance repo (instance/) with: git config core.hooksPath ../.githooks
@@ -17,7 +17,7 @@ log="$root/.git/sgnl-bootstrap-push.log"
     echo "$(date '+%F %T') OK $out" >> "$log"
   else
     echo "$(date '+%F %T') FAILED $out" >> "$log"
-    osascript -e 'display notification "Bootstrap bundle not pushed (Vaultwarden locked? export BW_SESSION=$(bw unlock --raw)). Log: .git/sgnl-bootstrap-push.log" with title "SGNL"' >/dev/null 2>&1
+    osascript -e 'display notification "Bootstrap bundle not pushed (Vaultwarden locked? bin/sgnl-unlock). Log: .git/sgnl-bootstrap-push.log" with title "SGNL"' >/dev/null 2>&1
   fi
 ) </dev/null >/dev/null 2>&1 &
 disown

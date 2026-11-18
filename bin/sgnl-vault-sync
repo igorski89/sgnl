@@ -27,6 +27,8 @@ import urllib.error, urllib.request, urllib.parse
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
 import instance  # noqa: E402
+import bwsession  # noqa: E402
+bwsession.ensure()
 I = instance.load()
 VAULT = f"https://vault.{I['SGNL_APPS_DOMAIN']}"
 CONFIG = os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")

@@ -86,7 +86,7 @@ for outgoing connections, and with the IPv4 address alone calls made
 from the host fail with error 9109.
 
 Store it as `example-sgnl-cloudflare-api-token` in Vaultwarden (`bin/sgnl-secret`) (see
-`.kamal/secrets.example`). `bin/stalwart-apply` sends it into Stalwart's
+`.kamal/secrets`). `bin/stalwart-apply` sends it into Stalwart's
 datastore; it isn't deployed as a container env var.
 
 Whoever holds this token can rewrite any DNS record of all five

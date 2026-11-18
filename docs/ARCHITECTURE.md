@@ -162,7 +162,6 @@ and scripts read it; nothing outside it names a real company.
 
 ```bash
 git clone https://github.com/igorski89/sgnl && cd sgnl
-cp .kamal/secrets.example .kamal/secrets   # secret names only; values via bin/sgnl-secret
 cp -R instance.example instance && cd instance && git init   # then edit sgnl.env
 ```
 

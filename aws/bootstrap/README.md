@@ -64,9 +64,9 @@ file: no `~/.aws/credentials`, nothing in the project. Run these in your
 own terminal:
 
 ```bash
-export BW_SESSION=$(bw unlock --raw)
-read -rs k; printf %s "$k" | ../bin/sgnl-secret --set aws-access-key-id        # paste AKIA...
-read -rs k; printf %s "$k" | ../bin/sgnl-secret --set aws-secret-access-key; unset k
+../bin/sgnl-unlock
+../bin/sgnl-secret --set aws-access-key-id        # hidden prompt: paste AKIA..., Enter
+../bin/sgnl-secret --set aws-secret-access-key
 
 cd ..   # aws/
 ./awscli sts get-caller-identity

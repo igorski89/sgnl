@@ -58,7 +58,6 @@ export SGNL_SECRETS="csv:$HOME/sgnl-recovery/sgnl-bootstrap/secrets.csv"
 bin/sgnl-secret --list | wc -l          # same as the next line
 python3 -c 'import csv,sys; print(sum(1 for _ in csv.DictReader(open(sys.argv[1]))))' ../sgnl-bootstrap/secrets.csv
 cp ../sgnl-bootstrap/aws/terraform.tf* aws/
-cp .kamal/secrets.example .kamal/secrets
 git config core.hooksPath .githooks
 git -C instance config core.hooksPath ../.githooks
 ```

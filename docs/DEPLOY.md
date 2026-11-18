@@ -18,7 +18,7 @@ Secrets: every `example-sgnl-*` value is a Login item in Vaultwarden
 (the organisation's collection `SGNL`, §5; before the organisation
 exists, the personal folder "SGNL infra"), read through
 `bin/sgnl-secret` (Keychain until 2026-11). Unlock once per terminal,
-`export BW_SESSION=$(bw unlock --raw)`, and run Kamal as
+`bin/sgnl-unlock` (once a day; `bin/sgnl-lock` at the end), and run Kamal as
 `bin/sgnl-env kamal ...` (one lookup instead of 19).
 
 **Restarting without a deploy** (`kamal app boot`, `kamal app
@@ -38,9 +38,10 @@ which plain boots work again.
 - [x] SES production access in eu-central-1 (granted before this
       project; 50k/day, checked 2026-10-08).
 - [ ] Cloudflare API token per `DNS.md` → Vaultwarden `example-sgnl-cloudflare-api-token`.
-- [ ] `.kamal/secrets.example` → `.kamal/secrets`. Run every
-      `security add-generic-password` line in it once (incl. the
-      Keycloak loops: Postgres, bootstrap admin, four client secrets).
+- [ ] Create each secret once: the commented `bin/sgnl-secret --set`
+      lines in `.kamal/secrets` (incl. the Keycloak loops: Postgres,
+      bootstrap admin, client secrets). The file itself holds names only
+      and is tracked.
 - [ ] `stalwart-cli` ≥ 1.0.13 on your PATH
       (`brew install stalwartlabs/tap/stalwart-cli`, or the release
       tarball from github.com/stalwartlabs/cli; check the `.sha256`).

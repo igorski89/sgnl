@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Unlocks Vaultwarden once for every SGNL tool, terminal and agent session
+# (lib/bwsession.py): asks for the master password, writes the session
+# key to ~/.cache/sgnl/bw-session (600). Lock again with bin/sgnl-lock,
+# e.g. at the end of the day.
+#
+#   bin/sgnl-unlock
+#
+# Each unlock makes earlier session keys invalid, also ones other
+# sessions hold in their own BW_SESSION; tools using the shared file just
+# pick up the new key.
+set -euo pipefail
+F=${SGNL_BW_SESSION_FILE:-$HOME/.cache/sgnl/bw-session}
+status=$(bw status | python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')
+if [[ $status == unauthenticated ]]; then
+  echo "bw is not logged in: bw login --apikey (docs/DEPLOY.md §0)" >&2; exit 1
+fi
+key=$(bw unlock --raw)   # prompts for the master password
+umask 077
+mkdir -p "$(dirname "$F")"
+printf %s "$key" > "$F.tmp" && mv "$F.tmp" "$F"
+echo "Vaultwarden unlocked for all SGNL tools and agent sessions, until bin/sgnl-lock."
