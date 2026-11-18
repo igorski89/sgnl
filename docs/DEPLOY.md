@@ -175,19 +175,40 @@ redeploy, and log in with an app password from `/account`.
 
 ## 5. Vaultwarden
 
-Signups stay off except for the one-time account creation:
+Accounts come from the first SSO login (`SSO_ONLY`, `SSO_SIGNUPS_ALLOWED`
+in `config/deploy.vaultwarden.yml`); nobody signs up with a password.
 
 ```bash
-# temporarily edit deploy.vaultwarden.yml: SIGNUPS_ALLOWED: "true"
 kamal setup -c config/deploy.vaultwarden.yml
 # https://vault.sgnl.example.com -> "Use single sign-on" -> Keycloak,
 # then set your master password (Keycloak never sees it)
-# edit back to SIGNUPS_ALLOWED: "false"
-kamal deploy -c config/deploy.vaultwarden.yml
 ```
 
-Once SSO login works from the web vault, the browser extension and the
-mobile app, set `SSO_ONLY: "true"` and deploy again.
+**The company organisation (once, by the first admin).** Personal
+passwords stay in each person's own vault; company passwords live in one
+organisation, sorted into collections that are shared with groups.
+Creating the organisation can't be scripted (Bitwarden makes its key in
+the owner's browser), everything after that is config:
+
+1. Web vault → "New organisation", named exactly `SGNL_ORG_NAME` from
+   `instance/sgnl.env`.
+2. Admin Console → Settings → Organisation info → "View API key", then:
+   ```bash
+   bin/sgnl-secret --set vaultwarden-org-client-id       # hidden prompt: paste, Enter
+   bin/sgnl-secret --set vaultwarden-org-client-secret
+   ```
+3. Apply `instance/vaultwarden/org.yaml` (from `instance.example/`: groups
+   `everyone` = Keycloak `sgnl_users` and `admins` = `admins`; collections
+   `<company name>` for everyone to view, `SGNL` for admins):
+   ```bash
+   bin/sgnl-vault-sync --dry-run && bin/sgnl-vault-sync
+   ```
+   From then on `bin/sgnl-kc` re-runs it after people changes; each new
+   person accepts the invite email once. Details: `USERS.md` "Shared
+   passwords".
+4. New infrastructure secrets now go into the `SGNL` collection
+   (`bin/sgnl-secret --set`); move any created before into it
+   ("Assign to collections").
 
 Accounts are linked by `"<issuer>/<sub>"` (table `sso_users`): changing
 `SSO_AUTHORITY` needs the same change in that table (done for the

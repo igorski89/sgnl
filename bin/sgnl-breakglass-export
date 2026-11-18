@@ -56,6 +56,7 @@ LIVE = {
     "bulwark-session-secret":          ("SGNL Bulwark session secret", f"https://inbox.{S}", "Webmail sessions."),
 }
 # Left in the Keychain but no longer used (removed apps / Authelia-era clients).
+LATER = {"vaultwarden-org-client-id", "vaultwarden-org-client-secret"}  # docs/DEPLOY.md §5
 DEAD = {
     "authelia-jwt-secret", "authelia-session-secret", "authelia-storage-encryption-key",
     "lldap-admin-password", "lldap-authelia-password", "lldap-jwt-secret", "lldap-key-seed",
@@ -84,7 +85,9 @@ def main():
     unknown = found - set(LIVE) - DEAD
     if unknown:
         sys.exit("not listed in LIVE or DEAD, add them first: " + ", ".join(sorted(unknown)))
-    missing = set(LIVE) - found
+    # Secrets that only exist once a later setup step is done (a fresh
+    # instance doesn't have them yet): exported when present.
+    missing = set(LIVE) - found - LATER
     if missing:
         sys.exit("listed in LIVE but not in the secret store: " + ", ".join(sorted(missing)))
 
@@ -96,9 +99,11 @@ def main():
         w = csv.writer(f)
         w.writerow(["Title", "URL", "Username", "Password", "Notes", "OTPAuth"])
         for key, (title, url, notes) in LIVE.items():
+            if key not in values:
+                continue
             w.writerow([title, url, PREFIX + key, values[key], notes, ""])
 
-    print(f"{len(LIVE)} live items written to {path} "
+    print(f"{len(set(LIVE) & found)} live items written to {path} "
           f"({len(found)} in the store, {len(DEAD & found)} dead skipped)", file=sys.stderr)
 
 
