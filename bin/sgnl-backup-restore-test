@@ -30,9 +30,9 @@ cleanup
 
 echo "==> restoring latest snapshot"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore latest --host sgnl --target /restore/restore-test --include /staging/sgnl_stalwart_data -q
-chown -R 2000:2000 "$T/staging/sgnl_stalwart_data"
-du -sh "$T/staging/sgnl_stalwart_data"
+  restic/restic:0.18.0 restore latest --host sgnl --target /restore/restore-test --include /staging/sgnl_stalwart_v1 -q
+chown -R 2000:2000 "$T/staging/sgnl_stalwart_v1"
+du -sh "$T/staging/sgnl_stalwart_v1"
 
 echo "==> booting a throwaway Stalwart on it (no internet, no ports)"
 docker network create --internal $NAME >/dev/null
@@ -40,7 +40,7 @@ IMAGE=$(docker inspect --format '{{.Config.Image}}' "$(docker ps -qf label=servi
 printf 'STALWART_RECOVERY_ADMIN=%s\n' "$ADMIN" > "$T/env"
 docker run -d --name $NAME --network $NAME --env-file "$T/env" \
   -e STALWART_PUBLIC_URL=https://mail.$SGNL_APPS_DOMAIN \
-  -v "$T/staging/sgnl_stalwart_data:/var/lib/stalwart" \
+  -v "$T/staging/sgnl_stalwart_v1:/var/lib/stalwart" \
   -v /opt/sgnl/stalwart/config.json:/etc/stalwart/config.json:ro \
   "$IMAGE" >/dev/null
 rm -f "$T/env"

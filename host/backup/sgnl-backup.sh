@@ -29,7 +29,7 @@ RESTIC_IMAGE=restic/restic:0.18.0
 # One line per volume; a service with two volumes is paused once per volume.
 # Collabora has no state worth keeping (its WOPI proof key is regenerated).
 APPS=(
-  "sgnl-stalwart sgnl_stalwart_data"
+  "sgnl-stalwart sgnl_stalwart_v1"
   "sgnl-forgejo sgnl_forgejo_data"
   "sgnl-vaultwarden sgnl_vaultwarden_data"
   "sgnl-opencloud sgnl_opencloud_config"

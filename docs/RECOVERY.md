@@ -99,7 +99,7 @@ ssh root@<ip> 'docker run --rm --env-file /opt/sgnl/backup/restic.env \
 ```
 
 Then, per volume in `APPS` of `host/backup/sgnl-backup.sh`
-(`sgnl_stalwart_data`, `sgnl_forgejo_data`, `sgnl_vaultwarden_data`,
+(`sgnl_stalwart_v1`, `sgnl_forgejo_data`, `sgnl_vaultwarden_data`,
 `sgnl_opencloud_config`, `sgnl_opencloud_data`):
 
 ```bash

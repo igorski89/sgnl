@@ -32,7 +32,7 @@
 # Accounts must already exist (stalwart/plan.ndjson): an OIDC directory
 # can't resolve recipients for people who have never logged in.
 
-{"@type":"upsert","object":"Directory","matchOn":["description"],"value":{"authelia":{"@type":"Oidc","description":"authelia","issuerUrl":"https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}","claimUsername":"preferred_username","usernameDomain":"{{SGNL_DOMAIN}}","claimName":"name"}}}
+{"@type":"upsert","object":"Directory","matchOn":["description"],"value":{"authelia":{"@type":"Oidc","description":"authelia","issuerUrl":"https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}","claimUsername":"preferred_username","usernameDomain":"{{SGNL_DOMAIN}}","acceptedAudiences":{},"skipAudienceValidation":true,"allowIdTokenClaims":false,"lenientIssuerMatch":false,"allowInvalidCerts":false,"opaqueTokenValidation":"userInfo","unscopedTokens":"interoperable","claimName":"name"}}}
 {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","directoryId":null}}}
 {"@type":"update","object":"Authentication","value":{"directoryId":"#authelia"}}
 # Stalwart web UI (/account, /admin) logs in through Keycloak as public

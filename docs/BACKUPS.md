@@ -175,8 +175,8 @@ deploy Keycloak.
 3. Stop the app, replace the volume contents, fix ownership, start it:
    ```bash
    docker stop <stalwart container>
-   rsync -a --delete /opt/sgnl/backup/r/staging/sgnl_stalwart_data/ /var/lib/docker/volumes/sgnl_stalwart_data/_data/
-   chown -R 2000:2000 /var/lib/docker/volumes/sgnl_stalwart_data/_data
+   rsync -a --delete /opt/sgnl/backup/r/staging/sgnl_stalwart_v1/ /var/lib/docker/volumes/sgnl_stalwart_v1/_data/
+   chown -R 2000:2000 /var/lib/docker/volumes/sgnl_stalwart_v1/_data
    docker start <stalwart container>
    ```
    Same for the other volumes (Forgejo, Vaultwarden, OpenCloud), each

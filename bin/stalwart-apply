@@ -11,7 +11,7 @@ set -euo pipefail
 #   bin/stalwart-apply --dry-run            # validate only
 #   bin/stalwart-apply --render             # print the rendered plan, apply nothing
 #
-# Needs stalwart-cli >= 1.0.13 on PATH (brew install
+# Needs stalwart-cli >= 2.0 for Stalwart 1.x (>= 1.0.13 for 0.16) on PATH (brew install
 # stalwartlabs/tap/stalwart-cli, or the release tarball).
 cd "$(dirname "$0")/.."
 
