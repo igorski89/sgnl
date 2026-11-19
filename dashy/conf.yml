@@ -11,7 +11,6 @@ pageInfo:
   title: Secrétariat Général
   description: {{SGNL_ORG_NAME}} workspace
   navLinks: []
-  footerText: "{{SGNL_ORG_NAME}} · Secrétariat Général"
 
 appConfig:
   theme: default
