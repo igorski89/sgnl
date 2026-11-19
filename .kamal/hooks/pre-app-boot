@@ -21,8 +21,9 @@ case "${KAMAL_SERVICE:-}" in
     files=(csp.yaml proxy.yaml) ;;
   sgnl-dashy)
     # Dashy runs as uid 1000: world-readable, no secrets in it. The tiles
-    # are this company's, so the file lives in instance/.
-    src=$SGNL_INSTANCE_DIR/dashy dest=dashy dir_mode=755 world_readable=1
+    # are the generic SGNL template (dashy/conf.yml); an instance's own
+    # sections are appended from $SGNL_INSTANCE_DIR/dashy/extra-sections.yml.
+    src=dashy dest=dashy dir_mode=755 world_readable=1
     files=(conf.yml) ;;
   sgnl-collabora)
     # Nothing to upload; make sure the WOPI proof key exists (once).
@@ -50,6 +51,12 @@ for f in "${files[@]}"; do
   bin/sgnl-render "$src/$f" > "$out/$f"
   chmod "$(stat -f %Lp "$src/$f" 2>/dev/null || stat -c %a "$src/$f")" "$out/$f"   # macOS || Linux
 done
+
+# Dashy: the instance's extra sections go after the template's.
+extra=$SGNL_INSTANCE_DIR/dashy/extra-sections.yml
+if [[ ${KAMAL_SERVICE:-} == sgnl-dashy && -s $extra ]]; then
+  bin/sgnl-render "$extra" >> "$out/conf.yml"
+fi
 
 # bin/sgnl-config-dump: print what would be uploaded, upload nothing.
 if [[ -n ${SGNL_HOOK_DUMP:-} ]]; then
