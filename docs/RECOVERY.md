@@ -64,7 +64,7 @@ git -C instance config core.hooksPath ../.githooks
 
 Keep `SGNL_SECRETS` exported in every shell until phase 6.
 
-Tools: Ruby + `gem install kamal -v 2.12.0`, `stalwart-cli` (`docs/DEPLOY.md` §0). Terraform runs in Docker (`aws/tf`).
+Tools: Ruby + `gem install kamal:2.12.0 dotenv`, `stalwart-cli` ≥ 2.0 (Stalwart 1.x; `docs/DEPLOY.md` §0). Terraform runs in Docker (`aws/tf`).
 
 **Check:** `bin/sgnl-secret --list` shows as many names as `secrets.csv` has rows; `git log -1` and
 `git -C instance log -1` match the manifest's two commits;
@@ -100,7 +100,7 @@ ssh root@<ip> 'docker run --rm --env-file /opt/sgnl/backup/restic.env \
 
 Then, per volume in `APPS` of `host/backup/sgnl-backup.sh`
 (`sgnl_stalwart_v1`, `sgnl_forgejo_data`, `sgnl_vaultwarden_data`,
-`sgnl_opencloud_config`, `sgnl_opencloud_data`):
+`sgnl_opencloud_config`, `sgnl_opencloud_data`, `sgnl_listmonk_uploads`):
 
 ```bash
 ssh root@<ip> 'docker volume create <vol> && \
@@ -117,11 +117,26 @@ config: `rsync -a /opt/sgnl/backup/r/config/stalwart/ /opt/sgnl/stalwart/`.
 
 Follow `docs/DEPLOY.md` §1–6b with these differences:
 
-- **Keycloak first:** boot only its Postgres
-  (`kamal accessory boot postgres -c config/deploy.keycloak.yml`), restore
-  the dump (`docs/BACKUPS.md`, "Restore drill: Keycloak", real restore),
-  then deploy Keycloak. Users, passkeys and clients come back from the
-  dump; don't re-run the first-login or invite steps.
+- **Databases before their apps** (Keycloak first, then listmonk): boot
+  only the Postgres accessory (Postgres 18, volume `*_db18` mounted at
+  `/var/lib/postgresql`), restore its dump from the snapshot, then deploy
+  the app:
+  ```bash
+  kamal accessory boot postgres -c config/deploy.keycloak.yml
+  ssh root@<ip> 'docker exec -i sgnl-keycloak-postgres pg_restore -U keycloak \
+    -d keycloak --no-owner --exit-on-error < /opt/sgnl/backup/r/staging/keycloak/keycloak.dump'
+  # same for listmonk: sgnl-listmonk-postgres, user/db listmonk,
+  # staging/listmonk/listmonk.dump; then bin/sgnl-listmonk-setup
+  ```
+  Users, passkeys and clients come back from the dump; don't re-run the
+  first-login or invite steps. listmonk's settings, lists and subscribers
+  are in its dump too.
+- **Stalwart 1.x** starts on the restored `sgnl_stalwart_v1`;
+  `bin/stalwart-apply` (and `stalwart/plan-oidc.ndjson`) is safe to re-run.
+- **AWS needs nothing:** the SES pipeline, campaigns configuration set and
+  its SNS subscription to listmonk live in AWS and point at host names,
+  not the server's IP (Terraform state is in the bundle for later
+  changes).
 - **Skip every "first time" step** (creating admins, Vaultwarden signups,
   Forgejo setup, Stalwart bootstrap): the restored data already has them.
 - `bin/sgnl-keycloak-apply` is safe to run (realm config as code).
@@ -134,11 +149,15 @@ and vault.
 ## 6. Back to normal
 
 0. Secrets from Vaultwarden again: `bw config server https://vault.sgnl.example.com`,
-   `bw login --apikey` (the owner's API key), `export BW_SESSION=$(bw unlock --raw)`,
-   `unset SGNL_SECRETS`, then `bin/sgnl-secret --list` shows 26.
+   `bw login --apikey` (the owner's API key), `bin/sgnl-unlock`,
+   `unset SGNL_SECRETS`, then `bin/sgnl-secret --list` shows as many as
+   `secrets.csv` has rows.
 1. `bin/sgnl-backup-install` (timer back on), then
    `bin/sgnl-backup-install --run`.
-2. `bin/sgnl-backup-restore-test` and `bin/sgnl-backup-restore-test-keycloak`.
+2. All restore drills: `ls bin/sgnl-backup-restore-test*` (Stalwart,
+   Keycloak, listmonk, Forgejo, Vaultwarden, OpenCloud).
+   `bin/sgnl-vault-sync` once (Vaultwarden organisation, groups,
+   collections).
 3. Inbound mail since the snapshot is in S3 for 30 days (`incoming/`):
    replay it (`aws/README.md`).
 4. If the sheet was handed around: change the restic password
@@ -152,7 +171,7 @@ and vault.
 
 ## Known gaps (fix after the drill)
 
-- Tooling is written for macOS (BSD tar flags, `security` for the
-  optional Keychain store); untested on Linux.
+- Tooling is written for macOS; untested on Linux (CI only checks that
+  the example instance renders).
 - Phases 4–5 are assembled from per-service restore drills that passed,
   not from a full rebuild.
