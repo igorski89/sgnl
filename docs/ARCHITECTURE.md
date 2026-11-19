@@ -19,24 +19,29 @@ there).
 
 ## Scope: what's in Phase 1
 
-| Service | Image | Subdomain | Role |
-| --- | --- | --- | --- |
-| Keycloak | `quay.io/keycloak/keycloak:26.7.5` + `postgres:18.7-alpine` | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, account page; realm as code in `keycloak/realm.yaml` |
-| Stalwart | `stalwartlabs/stalwart:v1.1.1` | `mail.sgnl.example.com` | IMAP (993), JMAP, submission (465) — mail routing itself (both directions) is AWS SES, see below |
-| Bulwark | `ghcr.io/bulwarkmail/webmail:1.21.2` | `inbox.sgnl.example.com` | JMAP webmail client |
-| Forgejo | `codeberg.org/forgejo/forgejo:15.0.9-rootless` | `git.sgnl.example.com` | Git forge: repos, issues, PRs, LFS (local disk). HTTPS only |
-| Vaultwarden | `vaultwarden/server:1.37.4` | `vault.sgnl.example.com` | Password manager (Bitwarden-compatible) |
-| Dashy | `lissy93/dashy:4.7.0` | `home.sgnl.example.com` | Landing page after login: tiles by group, status lights |
-| OpenCloud | `opencloudeu/opencloud:9.1.1` | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
-| listmonk | `listmonk/listmonk:v7.0.0-beta.2` + `postgres:18.7-alpine` | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES (sending not set up yet) |
-| Collabora Online (CODE) | `collabora/code:26.04.4.2.1` | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
+| Service | Subdomain | Role |
+| --- | --- | --- |
+| Keycloak | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, account page; realm as code in `keycloak/realm.yaml` |
+| Stalwart | `mail.sgnl.example.com` | IMAP (993), JMAP, submission (465) — mail routing itself (both directions) is AWS SES, see below |
+| Bulwark | `inbox.sgnl.example.com` | JMAP webmail client |
+| Forgejo | `git.sgnl.example.com` | Git forge: repos, issues, PRs, LFS (local disk). HTTPS only |
+| Vaultwarden | `vault.sgnl.example.com` | Password manager (Bitwarden-compatible) |
+| Dashy | `home.sgnl.example.com` | Landing page after login: tiles by group, status lights |
+| OpenCloud | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
+| listmonk | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES with bounce and complaint handling |
+| Collabora Online (CODE) | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
+
+Exact versions: the `FROM` line of each `docker/<service>/Dockerfile`
+(databases and monitoring: `image:` in `config/deploy.*.yml`); newer ones:
+`bin/sgnl-image-updates`. Also running: monitoring (VictoriaMetrics,
+VictoriaLogs, vmalert, Alertmanager, Grafana at `monitor.sgnl`) and nightly
+encrypted backups with restore drills (`docs/BACKUPS.md`).
 
 Security model, per-service threats and hardening: `docs/SECURITY.md`.
 People (onboarding, offboarding, break-glass recovery): `docs/USERS.md`.
 
 Deliberately **not** built yet: PrivateBin, chat, Headscale/Tailscale mesh,
-CrowdSec, Vector + AI triage, Uptime Kuma/Beszel, dedicated backup accessory,
-Cloudflare Tunnel. Add these later, on their own `config/deploy.*.yml`
+CrowdSec, AI log triage, an external uptime check, Cloudflare Tunnel. Add these later, on their own `config/deploy.*.yml`
 files, once Phase 1 is stable — see "Deferred / not built" below for why
 each was cut.
 
@@ -199,17 +204,15 @@ that names your instance (run it before contributing back).
   laptop/mobile traffic through this VPS's IP; worth a deliberate yes/no
   given Hetzner's abuse-desk posture on exit-node traffic, not something
   to default into.
-- **CrowdSec, Vector + Claude/Telegram AI triage** — real ongoing
-  maintenance surface; also ships log content (auth logs, app logs) off
-  this box to the Claude API and Telegram, which is a data-handling
-  decision worth making explicitly, not bundling into infra plumbing.
-- **Uptime Kuma/Beszel** — cheap to add later, sequenced after the rest is
-  stable so there's something meaningful to monitor.
-- **Backup accessory for this stack** — `cotenant` already has a
-  Restic→R2 pattern to copy (see its `backup` accessory in
-  `../cotenant/config/deploy.yml`); intentionally left out here until Phase 1
-  is confirmed working, so we're not backing up config that's still
-  changing.
+- **CrowdSec, AI log triage** — real ongoing maintenance surface; AI
+  triage would also ship log content off this box, a data-handling
+  decision worth making explicitly. (Logs themselves are collected:
+  Vector → VictoriaLogs, `config/deploy.monitoring.yml`.)
+- **External uptime check** — monitoring and alerts run on this host, so
+  "host down" can't alert; an outside check (e.g. a heartbeat pinged by
+  the nightly backup) closes that. Not built yet.
+- **Backups** — built: nightly restic → R2 from the host
+  (`host/backup/`, `docs/BACKUPS.md`), not as an accessory.
 - **Cloudflare Tunnel (`cloudflared`)** — considered, not built, scope
   still undecided. Mechanically simple (one Kamal accessory, one
   Cloudflare Tunnel with public-hostname routes for the web apps), but

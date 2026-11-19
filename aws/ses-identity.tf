@@ -1,26 +1,16 @@
-# --- The SES domain identity: adopted, never destroyed ----------------------
-# Verified by hand in eu-central-1 before this project (Easy DKIM, custom
-# MAIL FROM mail.<domain>, production access); all company mail and
-# Gmail's "send mail as" depend on it. Imported 2026-11-18 so its settings
-# are reviewed and versioned here; the import changed nothing in AWS.
-# prevent_destroy: Terraform refuses any plan that would delete it, a
-# `terraform destroy` of this folder included. To stop managing it without
-# touching AWS: terraform state rm these three, then delete this file.
-
-import {
-  to = aws_sesv2_email_identity.domain
-  id = var.domain_name
-}
-
-import {
-  to = aws_sesv2_email_identity_mail_from_attributes.domain
-  id = var.domain_name
-}
-
-import {
-  to = aws_sesv2_email_identity_feedback_attributes.domain
-  id = var.domain_name
-}
+# --- The SES domain identity, never destroyed ----------------------------
+# All company mail sends as this domain (and Gmail's "send mail as" may
+# use it too). prevent_destroy: Terraform refuses any plan that would
+# delete it, a `terraform destroy` of this folder included.
+#
+# Fresh instance: `./tf apply` creates it with Easy DKIM; add the three
+# DKIM CNAMEs and the MAIL FROM records it reports (docs/DNS.md).
+# Identity made by hand before (the console): adopt it instead, with no
+# change in AWS:
+#   ./tf import aws_sesv2_email_identity.domain <domain>
+#   ./tf import aws_sesv2_email_identity_mail_from_attributes.domain <domain>
+#   ./tf import aws_sesv2_email_identity_feedback_attributes.domain <domain>
+# then `./tf plan` must show no changes.
 
 resource "aws_sesv2_email_identity" "domain" {
   email_identity = var.domain_name

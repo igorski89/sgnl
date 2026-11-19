@@ -1,6 +1,5 @@
 # --- Domain identity: see ses-identity.tf ------------------------------------
-# Verified by hand before this project; adopted into Terraform 2026-11-18
-# with prevent_destroy, so a `destroy` here can still never take it down.
+# Protected by prevent_destroy, so a `destroy` here can never take it down.
 # Receiving needs the domain verified in this region, which it is.
 
 # --- Receiving: rule set + rule ---------------------------------------------

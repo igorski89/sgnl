@@ -65,8 +65,8 @@ builder:
 # config.json is uploaded to /opt/sgnl/stalwart/ by
 # .kamal/hooks/pre-app-boot (Kamal 2 has no `files:` for app containers).
 volumes:
-  # 1.x store (stalwart-migrate from the 0.16 volume sgnl_stalwart_data,
-  # which is kept untouched for rollback: instance/docs/PLAN-upgrades.md).
+  # Stalwart 1.x store. (Named _v1: an existing 0.16 store is migrated into
+  # it with stalwart-migrate, docs/DEPLOY.md; a new instance just starts here.)
   - "sgnl_stalwart_v1:/var/lib/stalwart"
   - "/opt/sgnl/stalwart/config.json:/etc/stalwart/config.json:ro"
 
