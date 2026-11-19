@@ -34,7 +34,7 @@ for v in json.load(sys.stdin).values():
         vals.add(v); vals.update(p for p in v.replace(":", " ").split() if len(p) >= 12)
 r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1], sys.argv[2]], input="\n".join(vals), text=True, capture_output=True)
 if r.stdout.strip():
-    sys.exit("a real secret value is in: " + r.stdout.strip().replace(sys.argv[2], "the pushed commits (history)"))' "$t" "$t.lines" || fail "secret check failed (vault locked? bin/sgnl-unlock)"
+    sys.exit("a real secret value is in: " + r.stdout.strip().replace(sys.argv[2], "the pushed commits (history)"))' "$t" "$t.lines" || fail "secret check failed (see above; if the vault is locked: bin/sgnl-unlock)"
   rm -rf "${t:?}" "$t.lines"; trap - EXIT
 done
 echo "pre-push: ok" >&2
