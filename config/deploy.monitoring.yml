@@ -124,7 +124,7 @@ env:
 accessories:
   victoriametrics:
     service: sgnl-victoriametrics
-    image: victoriametrics/victoria-metrics:v1.154.1
+    image: victoriametrics/victoria-metrics:v1.156.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     cmd: >-
       -storageDataPath=/storage
@@ -137,7 +137,7 @@ accessories:
 
   vmagent:
     service: sgnl-vmagent
-    image: victoriametrics/vmagent:v1.154.1
+    image: victoriametrics/vmagent:v1.156.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     cmd: >-
       -promscrape.config=/etc/vmagent/scrape.yml
@@ -154,7 +154,7 @@ accessories:
 
   vmalert:
     service: sgnl-vmalert
-    image: victoriametrics/vmalert:v1.154.1
+    image: victoriametrics/vmalert:v1.156.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     # remoteWrite: alert state survives restarts. It takes the base URL
     # (vmalert appends /api/v1/write itself).
@@ -179,7 +179,7 @@ accessories:
 
   alertmanager:
     service: sgnl-alertmanager
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.35.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     # Alertmanager doesn't expand env vars in its config, so the SES
     # credentials go from the env into /tmp at start, a tmpfs (memory, not
@@ -205,7 +205,7 @@ accessories:
 
   node-exporter:
     service: sgnl-node-exporter
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     host: <%= ENV.fetch("SGNL_HOST") %>
     # On the kamal network (no host port, no firewall change), so network
     # stats would be the container's own: those collectors are off;
@@ -225,7 +225,7 @@ accessories:
 
   cadvisor:
     service: sgnl-cadvisor
-    image: ghcr.io/google/cadvisor:v0.60.6
+    image: ghcr.io/google/cadvisor:v0.61.1
     host: <%= ENV.fetch("SGNL_HOST") %>
     # service/role become the metric labels container_label_service/_role.
     cmd: >-
@@ -247,7 +247,7 @@ accessories:
 
   victorialogs:
     service: sgnl-victorialogs
-    image: victoriametrics/victoria-logs:v1.53.0
+    image: victoriametrics/victoria-logs:v1.54.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     # Whichever comes first: 30 days, or 2 GiB on disk (oldest days are
     # dropped; alert LogsDiskCapReached).
@@ -262,7 +262,7 @@ accessories:
 
   vector:
     service: sgnl-vector
-    image: timberio/vector:0.59.0-debian
+    image: timberio/vector:0.62.0-debian
     host: <%= ENV.fetch("SGNL_HOST") %>
     # -debian: it has journalctl (systemd 257, reads the host's 255 journal).
     cmd: --config /etc/vector/vector.yaml
@@ -278,7 +278,7 @@ accessories:
 
   vmalert-logs:
     service: sgnl-vmalert-logs
-    image: victoriametrics/vmalert:v1.154.1
+    image: victoriametrics/vmalert:v1.156.0
     host: <%= ENV.fetch("SGNL_HOST") %>
     # Same as vmalert, against VictoriaLogs: every rule is LogsQL (type
     # vlogs). Alert state goes to VictoriaMetrics like vmalert's.
