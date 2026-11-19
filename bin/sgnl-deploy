@@ -24,6 +24,17 @@ deploy_one() {
   local app=$1 cfg=config/deploy.$1.yml host path
   [[ -f $cfg ]] || { echo "no $cfg" >&2; return 1; }
   echo "==> $app ($(git rev-parse --short HEAD))"
+  # Accessory-only configs (plain vendor images, e.g. dashy): restart the
+  # accessories with the current config instead of an app deploy.
+  local accs; accs=$(ruby -rkamal -e '
+    c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
+    puts c.raw_config.servers.nil? ? c.accessories.map(&:name).join(" ") : ""' "$cfg" 2>/dev/null) || accs=""
+  if [[ -n $accs ]]; then
+    for acc in $accs; do
+      echo "    accessory $acc: reboot (a few seconds down)"
+      bin/sgnl-env kamal accessory reboot "$acc" -c "$cfg" >/dev/null || { echo "    REBOOT FAILED: $app/$acc" >&2; return 1; }
+    done
+  else
   if [[ $STOP_FIRST == *" $app "* ]]; then
     echo "    stop first: $app can't run two containers on its data (brief downtime)"
     bin/sgnl-env kamal app stop -c "$cfg" >/dev/null
@@ -31,10 +42,11 @@ deploy_one() {
   bin/sgnl-env kamal deploy -c "$cfg" > >(grep -E "ERROR|healthy|Finished all" >&2) 2>&1 || {
     echo "    DEPLOY FAILED: $app (kamal keeps the old container unless it was stopped first;" >&2
     echo "    then: bin/sgnl-env kamal app boot -c $cfg --version <previous tag>)" >&2; return 1; }
+  fi
   # Public check: proxy host + healthcheck path from the config.
   read -r host path < <(ruby -rkamal -e '
     c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
-    p = c.raw_config.to_h[:proxy] || {}
+    p = c.raw_config.to_h[:proxy] || c.accessories.find(&:running_proxy?)&.then { |a| c.raw_config.to_h[:accessories][a.name]["proxy"] } || {}
     puts [p["host"], (p.dig("healthcheck", "path") || "/")].join(" ")' "$cfg" 2>/dev/null) || true   # top level: symbols, inside: strings
   if [[ -n ${host:-} ]]; then
     local code; code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$host$path")

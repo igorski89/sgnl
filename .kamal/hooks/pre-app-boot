@@ -19,12 +19,6 @@ case "${KAMAL_SERVICE:-}" in
     # Container runs as uid 1000: world-readable, no secrets in these.
     src=opencloud dest=opencloud dir_mode=755 world_readable=1
     files=(csp.yaml proxy.yaml) ;;
-  sgnl-dashy)
-    # Dashy runs as uid 1000: world-readable, no secrets in it. The tiles
-    # are the generic SGNL template (dashy/conf.yml); an instance's own
-    # sections are appended from $SGNL_INSTANCE_DIR/dashy/extra-sections.yml.
-    src=dashy dest=dashy dir_mode=755 world_readable=1
-    files=(conf.yml) ;;
   sgnl-collabora)
     # Nothing to upload; make sure the WOPI proof key exists (once).
     for host in ${KAMAL_HOSTS//,/ }; do
@@ -51,12 +45,6 @@ for f in "${files[@]}"; do
   bin/sgnl-render "$src/$f" > "$out/$f"
   chmod "$(stat -f %Lp "$src/$f" 2>/dev/null || stat -c %a "$src/$f")" "$out/$f"   # macOS || Linux
 done
-
-# Dashy: the instance's extra sections go after the template's.
-extra=$SGNL_INSTANCE_DIR/dashy/extra-sections.yml
-if [[ ${KAMAL_SERVICE:-} == sgnl-dashy && -s $extra ]]; then
-  bin/sgnl-render "$extra" >> "$out/conf.yml"
-fi
 
 # bin/sgnl-config-dump: print what would be uploaded, upload nothing.
 if [[ -n ${SGNL_HOOK_DUMP:-} ]]; then

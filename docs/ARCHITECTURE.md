@@ -144,6 +144,13 @@ scoped IAM user (`example-sgnl-terraform`) with a least-privilege policy
 
 ## Why a passthrough Dockerfile per service
 
+Unmodified vendor apps that need neither a zero-downtime swap nor a build
+can instead run as a Kamal *accessory* behind the same proxy (Kamal 2.12:
+`proxy:` and `files:` on accessories): no Dockerfile, no build, no
+registry, config files rendered and uploaded by Kamal. Dashy does
+(`config/deploy.dashy.yml`); restarts are a few seconds down instead of a
+health-gated swap.
+
 Kamal's zero-downtime swap + `kamal-proxy` registration is tied to its
 build → push → pull → boot lifecycle, which expects to own an
 `image:`+SHA it built. Each `docker/<service>/Dockerfile` is a one-line
