@@ -56,4 +56,8 @@ end
 Dir["host/backup/*"].sort.each do |f|
   File.write(File.join(out, "host.#{File.basename(f)}"), IO.popen(["bin/sgnl-render", f], &:read))
 end
+# The vendor image each app ships (last FROM of its Dockerfile).
+File.write(File.join(out, "images.txt"), Dir["docker/*/Dockerfile"].sort.map { |f|
+  "#{File.basename(File.dirname(f))}: #{File.readlines(f).grep(/^FROM /).last.split[1]}"
+}.join("\n") + "\n")
 puts "dumped to #{out}"

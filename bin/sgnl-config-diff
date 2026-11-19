@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# What a change does to the deployed configuration: renders everything the
+# configs turn into (bin/sgnl-config-dump: Kamal configs, uploaded files,
+# Keycloak realm, Stalwart plans, backup scripts) at a git ref and at the
+# working tree (or a second ref), with this instance and fake secrets, and
+# diffs the two. No stored baseline to keep up to date.
+#
+#   bin/sgnl-config-diff                 # HEAD vs the working tree
+#   bin/sgnl-config-diff main            # main vs the working tree
+#   bin/sgnl-config-diff HEAD~3 HEAD     # two commits
+#   bin/sgnl-config-diff -c ...          # also show comment-only changes
+#
+# Exit 0: no change, 1: changes (shown), 2: error. Fake secrets come from
+# SGNL_SECRET_<NAME>=FAKE-<name> for every name in .kamal/secrets, which
+# every version of bin/sgnl-secret reads first.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+source "$root/lib/instance.sh"
+inst=$(cd "$root" && cd "$SGNL_INSTANCE_DIR" && pwd)   # same instance on both sides
+
+ignore=(-I '^ *#')
+[[ ${1:-} == -c ]] && { ignore=(); shift; }
+a=${1:-HEAD}; b=${2:-}
+
+tmp=$(mktemp -d)
+cleanup() { for w in "$tmp"/wt-*; do [[ -d $w ]] && git -C "$root" worktree remove --force "$w" 2>/dev/null; done; rm -rf "${tmp:?}"; }
+trap cleanup EXIT
+
+dump() { # <dir with a checkout> <out>
+  local dir=$1 out=$2 envs=()
+  while IFS= read -r name; do
+    envs+=("SGNL_SECRET_$(tr 'a-z-' 'A-Z_' <<<"$name")=FAKE-$name")
+  done < <(grep -oE 'sgnl-secret [a-z0-9-]+' "$dir/.kamal/secrets" "$dir/.kamal/secrets.example" 2>/dev/null | awk '{print $2}' | sort -u)
+  (cd "$dir" && env "${envs[@]}" SGNL_INSTANCE_DIR="$inst" SGNL_SECRETS=dummy bin/sgnl-config-dump "$out" >/dev/null) ||
+    { echo "sgnl-config-diff: rendering failed in $dir" >&2; exit 2; }
+}
+checkout() { # <ref> -> path
+  local w="$tmp/wt-$(git -C "$root" rev-parse --short "$1")"
+  git -C "$root" worktree add -q --detach "$w" "$1" && echo "$w"
+}
+
+dump "$(checkout "$a")" "$tmp/a"
+if [[ -n $b ]]; then dump "$(checkout "$b")" "$tmp/b"; else dump "$root" "$tmp/b"; fi
+if diff -ru "${ignore[@]}" "$tmp/a" "$tmp/b" | sed -e "s|$tmp/a|${a}|; s|$tmp/b|${b:-working tree}|"; then
+  echo "no change in the rendered configuration (${a} vs ${b:-working tree})"
+else
+  exit 1
+fi
