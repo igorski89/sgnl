@@ -35,7 +35,7 @@ deploy_one() {
   read -r host path < <(ruby -rkamal -e '
     c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
     p = c.raw_config.to_h[:proxy] || {}
-    puts [p[:host], (p.dig(:healthcheck, :path) || "/")].join(" ")' "$cfg" 2>/dev/null) || true
+    puts [p["host"], (p.dig("healthcheck", "path") || "/")].join(" ")' "$cfg" 2>/dev/null) || true   # top level: symbols, inside: strings
   if [[ -n ${host:-} ]]; then
     local code; code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$host$path")
     [[ $code =~ ^(2|3)[0-9][0-9]$ ]] || { echo "    CHECK FAILED: https://$host$path -> $code" >&2; return 1; }
