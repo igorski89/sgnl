@@ -26,7 +26,7 @@ jobs:
         with:
           ruby-version: "3.3"
       - name: Kamal
-        run: gem install --no-document kamal -v 2.12.0 dotenv
+        run: gem install --no-document kamal:2.12.0 dotenv
       - name: Example instance renders
         run: |
           bin/sgnl-config-dump /tmp/out
