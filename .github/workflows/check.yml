@@ -1,0 +1,38 @@
+# On every push and pull request: scripts parse, the example instance
+# renders completely with fake secrets, the Vector redaction tests pass,
+# gitleaks finds nothing. (Instance-specific checks run in the pre-push
+# hook, .githooks/pre-push, where the instance is.)
+name: check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      SGNL_INSTANCE_DIR: instance.example
+      SGNL_SECRETS: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scripts parse
+        run: |
+          for f in bin/* lib/*.sh .githooks/* .kamal/hooks/*; do
+            case "$(head -1 "$f")" in
+              *python*) python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$f" ;;
+              *sh*) bash -n "$f" ;;
+            esac || { echo "::error file=$f::does not parse"; exit 1; }
+          done
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Kamal
+        run: gem install --no-document kamal -v 2.12.0 dotenv
+      - name: Example instance renders
+        run: |
+          bin/sgnl-config-dump /tmp/out
+          ls /tmp/out | wc -l
+          ! grep -rl '{{SGNL_' /tmp/out
+      - name: Vector tests
+        run: bin/sgnl-vector-test
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml --no-banner --redact

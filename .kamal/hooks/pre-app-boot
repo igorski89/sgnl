@@ -48,7 +48,7 @@ out=$(mktemp -d)
 trap 'rm -rf "${out:?}"' EXIT
 for f in "${files[@]}"; do
   bin/sgnl-render "$src/$f" > "$out/$f"
-  chmod "$(stat -f %Lp "$src/$f")" "$out/$f"
+  chmod "$(stat -f %Lp "$src/$f" 2>/dev/null || stat -c %a "$src/$f")" "$out/$f"   # macOS || Linux
 done
 
 # bin/sgnl-config-dump: print what would be uploaded, upload nothing.
