@@ -30,7 +30,7 @@ export RESTIC_REPOSITORY="s3:https://<account-id>.eu.r2.cloudflarestorage.com/ex
 export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...   # R2 key from the sheet
 read -rs RESTIC_PASSWORD; export RESTIC_PASSWORD           # restic password from the sheet
 R() { docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD \
-        -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY restic/restic:0.18.0 --no-lock "$@"; }
+        -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY restic/restic:0.19.1 --no-lock "$@"; }
 R snapshots --host bootstrap --latest 3
 R snapshots --host sgnl --latest 3
 R dump --host bootstrap latest /sgnl-bootstrap.tar | tar -x
@@ -94,7 +94,7 @@ not accept mail into an empty store).
 bin/sgnl-backup-install           # restic.env + notify.env on the host (timer: disable until 6)
 ssh root@<ip> 'systemctl disable --now sgnl-backup.timer'
 ssh root@<ip> 'docker run --rm --env-file /opt/sgnl/backup/restic.env \
-  -v /opt/sgnl/backup:/restore restic/restic:0.18.0 \
+  -v /opt/sgnl/backup:/restore restic/restic:0.19.1 \
   restore latest --host sgnl --target /restore/r'
 ```
 

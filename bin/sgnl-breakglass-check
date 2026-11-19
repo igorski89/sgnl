@@ -11,7 +11,7 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/instance.sh"
 
 REPO="s3:https://$SGNL_R2_ENDPOINT/$SGNL_BACKUP_BUCKET"
-IMAGE=restic/restic:0.18.0
+IMAGE=restic/restic:0.19.1
 
 read -rsp "restic password (SGNL backups: restic password): " RESTIC_PASSWORD; echo
 read -rsp "R2 access key ID (SGNL backups: R2 access key ID): " AWS_ACCESS_KEY_ID; echo

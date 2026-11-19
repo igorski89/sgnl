@@ -41,7 +41,7 @@ PGIMAGE=$(docker inspect --format '{{.Config.Image}}' sgnl-listmonk-postgres)
 
 echo "==> restoring listmonk's dump and uploads from snapshot $SNAPSHOT"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-listmonk \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-listmonk \
   --include /staging/listmonk --include /staging/sgnl_listmonk_uploads -q
 DUMP=$T/staging/listmonk/listmonk.dump
 [[ -s $DUMP ]] || { echo "MISSING in backup: listmonk/listmonk.dump"; exit 1; }

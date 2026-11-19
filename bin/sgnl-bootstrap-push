@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(ROOT, "lib"))
 import instance  # noqa: E402  (instance/sgnl.env)
 I = instance.load()
 REPO = f"s3:https://{I['SGNL_R2_ENDPOINT']}/{I['SGNL_BACKUP_BUCKET']}"
-IMAGE = "restic/restic:0.18.0"
+IMAGE = "restic/restic:0.19.1"
 
 
 def run(cmd, **kw):

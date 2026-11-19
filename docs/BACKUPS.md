@@ -8,7 +8,7 @@ Nightly, encrypted, off-site. Live since 2026-10-08 (first snapshot
 | What | Stalwart volume (all mail), Forgejo, Vaultwarden, OpenCloud (config + data), Keycloak (`pg_dump`, since 2026-10-18: users, groups, passwords, passkeys, clients, signing keys), `/opt/sgnl/stalwart` (config). Authelia and lldap left the backup on 2026-10-19 (replaced by Keycloak); snapshots that still contain them age out after 35 days |
 | When | 01:30 UTC (+ up to 10 min), systemd `sgnl-backup.timer`; cotenant's backup runs at 03:00 |
 | Where | Cloudflare R2, bucket `example-sgnl-backups` (EU jurisdiction, same account as cotenant) |
-| How | `host/backup/sgnl-backup.sh` on the host: rsync (`-aHAX`: keeps extended attributes, which OpenCloud needs) each volume to `/opt/sgnl/backup/staging`, `docker pause` the app for a second rsync (consistent copy, ~1–2 s), then restic (`restic/restic:0.18.0`). Keycloak's Postgres is not copied as files: `pg_dump -Fc` inside its container writes `staging/keycloak/keycloak.dump` (consistent, doesn't block Keycloak) |
+| How | `host/backup/sgnl-backup.sh` on the host: rsync (`-aHAX`: keeps extended attributes, which OpenCloud needs) each volume to `/opt/sgnl/backup/staging`, `docker pause` the app for a second rsync (consistent copy, ~1–2 s), then restic (`restic/restic:0.19.1`). Keycloak's Postgres is not copied as files: `pg_dump -Fc` inside its container writes `staging/keycloak/keycloak.dump` (consistent, doesn't block Keycloak) |
 | Encryption | restic, on the host, before upload. Password: Vaultwarden item `example-sgnl-restic-password` (`bin/sgnl-secret`) + a copy in Apple Passwords (`bin/sgnl-breakglass-export`; `bin/sgnl-breakglass-check` proves it opens the repo, passed 2026-11-17) |
 | Retention | every snapshot of the last 35 days, then 13 weekly, 12 monthly. Nightly `forget`; `prune` (deletes data) only on the 15th of each month, so it never tries to delete packs younger than the 30-day lock. (`--keep-daily` + nightly prune did, and hung on the locked deletes, 2026-10-09.) A prune failure email mentioning "locked by the bucket policy" is harmless: leftovers from an interrupted run, deleted the next month |
 | Delete protection | R2 bucket lock: `data/` objects can't be deleted for 30 days (tested: `ObjectLockedByBucketPolicy`) |
@@ -60,7 +60,7 @@ ssh root@203.0.113.10 systemctl list-timers sgnl-backup.timer
 
 Listing snapshots on the host:
 ```bash
-docker run --rm --env-file /opt/sgnl/backup/restic.env restic/restic:0.18.0 snapshots
+docker run --rm --env-file /opt/sgnl/backup/restic.env restic/restic:0.19.1 snapshots
 ```
 
 ## Restore drill
@@ -168,7 +168,7 @@ deploy Keycloak.
 2. Restore:
    ```bash
    docker run --rm --env-file restic.env -v /opt/sgnl/backup:/restore \
-     restic/restic:0.18.0 restore latest --host sgnl --target /restore/r
+     restic/restic:0.19.1 restore latest --host sgnl --target /restore/r
    ```
    Pick an older snapshot with its ID instead of `latest`
    (`... snapshots` lists them).

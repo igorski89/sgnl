@@ -72,7 +72,7 @@ export AWS_ACCESS_KEY_ID='{{R2_ID}}'
 export AWS_SECRET_ACCESS_KEY='{{R2_SECRET}}'
 export RESTIC_PASSWORD='{{RESTIC_PASSWORD}}'
 docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-  restic/restic:0.18.0 --no-lock dump --host bootstrap latest /sgnl-bootstrap.tar | tar -x
+  restic/restic:0.19.1 --no-lock dump --host bootstrap latest /sgnl-bootstrap.tar | tar -x
 git clone sgnl-bootstrap/repo.bundle sgnl</pre>
   <p>Then read <code>~/sgnl-recovery/sgnl/docs/RECOVERY.md</code> and follow it from phase 2 (phase 1 is the block above),
   phase by phase. Don't skip a phase's <b>Check</b>. Don't print the secrets in your replies or logs.

@@ -30,7 +30,7 @@ cleanup
 
 echo "==> restoring latest snapshot"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore latest --host sgnl --target /restore/restore-test --include /staging/sgnl_stalwart_v1 -q
+  restic/restic:0.19.1 restore latest --host sgnl --target /restore/restore-test --include /staging/sgnl_stalwart_v1 -q
 chown -R 2000:2000 "$T/staging/sgnl_stalwart_v1"
 du -sh "$T/staging/sgnl_stalwart_v1"
 

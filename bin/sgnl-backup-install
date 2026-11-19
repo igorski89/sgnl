@@ -39,7 +39,7 @@ echo "$restic_env" | ssh "$HOST" 'umask 077; cat > /opt/sgnl/backup/restic.env'
 echo "$notify_env" | ssh "$HOST" 'umask 077; cat > /opt/sgnl/backup/notify.env'
 
 ssh "$HOST" 'set -e
-  docker pull -q restic/restic:0.18.0 >/dev/null
+  docker pull -q restic/restic:0.19.1 >/dev/null
   systemctl daemon-reload
   systemctl enable --now sgnl-backup.timer >/dev/null
   systemctl list-timers sgnl-backup.timer --no-pager | head -2'

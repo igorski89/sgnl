@@ -40,7 +40,7 @@ LIVEDATA=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data
 
 echo "==> restoring Vaultwarden from snapshot $SNAPSHOT"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-vaultwarden \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-vaultwarden \
   --include /staging/sgnl_vaultwarden_data -q
 for f in db.sqlite3 rsa_key.pem; do
   [[ -s $DATA/$f ]] || { echo "MISSING in backup: $f"; exit 1; }

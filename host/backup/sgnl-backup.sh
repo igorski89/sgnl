@@ -20,7 +20,7 @@ set -euo pipefail
 
 BASE=/opt/sgnl/backup
 STAGING=$BASE/staging
-RESTIC_IMAGE=restic/restic:0.18.0
+RESTIC_IMAGE=restic/restic:0.19.1
 
 # shellcheck source=/dev/null
 . "$BASE/notify.env" # ALERT_TO, SES_SMTP_USERNAME, SES_SMTP_PASSWORD

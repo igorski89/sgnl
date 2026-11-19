@@ -44,7 +44,7 @@ LIVEDATA=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/
 
 echo "==> restoring OpenCloud from snapshot $SNAPSHOT"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-opencloud \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-opencloud \
   --include /staging/sgnl_opencloud_config --include /staging/sgnl_opencloud_data -q
 [[ -s $CONF/opencloud.yaml ]] || { echo "MISSING in backup: opencloud.yaml"; exit 1; }
 chown -R 1000:1000 "$CONF" "$DATA"

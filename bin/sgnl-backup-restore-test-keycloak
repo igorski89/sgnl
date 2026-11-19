@@ -42,7 +42,7 @@ PGIMAGE=$(docker inspect --format '{{.Config.Image}}' sgnl-keycloak-postgres)
 
 echo "==> restoring Keycloak's dump from snapshot $SNAPSHOT"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-keycloak \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-keycloak \
   --include /staging/keycloak -q
 DUMP=$T/staging/keycloak/keycloak.dump
 [[ -s $DUMP ]] || { echo "MISSING in backup: keycloak/keycloak.dump"; exit 1; }

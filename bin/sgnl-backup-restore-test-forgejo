@@ -39,7 +39,7 @@ IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
 
 echo "==> restoring Forgejo from snapshot $SNAPSHOT"
 docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
-  restic/restic:0.18.0 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-forgejo \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-forgejo \
   --include /staging/sgnl_forgejo_data -q
 chown -R 1000:1000 "$DATA"
 echo "    restored: $(du -sh "$DATA" | cut -f1)"
