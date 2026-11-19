@@ -12,11 +12,16 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 zero=0000000000000000000000000000000000000000
 fail() { echo "pre-push: $*" >&2; exit 1; }
-while read -r _ sha _ _; do
+while read -r _ sha _ rsha; do
   [[ $sha == "$zero" ]] && continue   # branch deletion
-  t=$(mktemp -d); trap 'rm -rf "${t:?}"' EXIT
+  t=$(mktemp -d); trap 'rm -rf "${t:?}" "$t.lines"' EXIT
   git archive "$sha" | tar -x -C "$t"
+  # Lines added by every pushed commit, not just the end state: a secret
+  # added and removed again within the push would stay in public history.
+  if [[ $rsha == "$zero" ]]; then range=("$sha" --not --remotes); else range=("$rsha..$sha"); fi
+  git log -p --format= "${range[@]}" | grep '^+' > "$t/.pushed-lines" || true
   echo "pre-push: checking ${sha:0:7}" >&2
+  mv "$t/.pushed-lines" "$t.lines"
   "$root/bin/sgnl-split-check" "$t" >/dev/null || { "$root/bin/sgnl-split-check" "$t" >&2 || true; fail "instance-specific content (above)"; }
   docker run --rm -v "$t:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
     --no-banner --redact >&2 || fail "gitleaks found something (above)"
@@ -27,9 +32,9 @@ for v in json.load(sys.stdin).values():
     v = str(v).strip()
     if len(v) >= 8:
         vals.add(v); vals.update(p for p in v.replace(":", " ").split() if len(p) >= 12)
-r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1]], input="\n".join(vals), text=True, capture_output=True)
+r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1], sys.argv[2]], input="\n".join(vals), text=True, capture_output=True)
 if r.stdout.strip():
-    sys.exit("a real secret value is in: " + r.stdout.strip())' "$t" || fail "secret check failed (vault locked? bin/sgnl-unlock)"
-  rm -rf "${t:?}"; trap - EXIT
+    sys.exit("a real secret value is in: " + r.stdout.strip().replace(sys.argv[2], "the pushed commits (history)"))' "$t" "$t.lines" || fail "secret check failed (vault locked? bin/sgnl-unlock)"
+  rm -rf "${t:?}" "$t.lines"; trap - EXIT
 done
 echo "pre-push: ok" >&2
