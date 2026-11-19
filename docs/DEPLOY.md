@@ -28,19 +28,12 @@ app boot -c config/deploy.<name>.yml --version <tag>` (tag from `docker
 ps` on the server: the part after the image's `:`). A normal `kamal
 deploy` builds the current tag, after which plain boots work again.
 
-**Redeploying everything** (e.g. after a fresh clone; done 2026-11-18,
-~5 min): least critical first, one at a time, check each. Kamal starts
-the new container before stopping the old one, which two apps can't
-take: **Forgejo and Stalwart need `kamal app stop -c ...` first**, then
-`kamal deploy` (~10 s and ~30 s down; incoming mail waits in SES/S3).
-
-```bash
-for a in dashy bulwark listmonk monitoring collabora opencloud vaultwarden keycloak; do
-  bin/sgnl-env kamal deploy -c config/deploy.$a.yml || break; done
-for a in forgejo stalwart; do
-  bin/sgnl-env kamal app stop -c config/deploy.$a.yml &&
-  bin/sgnl-env kamal deploy -c config/deploy.$a.yml || break; done
-```
+**Deploying an app: `bin/sgnl-deploy <app>`** (or `--all`, least
+critical first). It refuses uncommitted changes (the image tag must be a
+real commit), stops Forgejo and Stalwart first (they can't run two
+containers on the same data; ~10 s and ~30 s down, incoming mail waits in
+SES/S3), deploys through `bin/sgnl-env`, then checks the app's public
+health URL. Plain `kamal deploy` still works for anything special.
 
 - [ ] AWS: scoped IAM user, not root — `../aws/bootstrap/README.md`. Use
       the current `terraform-policy.json` (it includes the DLQ/SQS
