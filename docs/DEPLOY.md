@@ -55,7 +55,7 @@ for a in forgejo stalwart; do
       lines in `.kamal/secrets` (incl. the Keycloak loops: Postgres,
       bootstrap admin, client secrets). The file itself holds names only
       and is tracked.
-- [ ] `stalwart-cli` ≥ 1.0.13 on your PATH
+- [ ] `stalwart-cli` ≥ 2.0 on your PATH (Stalwart 1.x)
       (`brew install stalwartlabs/tap/stalwart-cli`, or the release
       tarball from github.com/stalwartlabs/cli; check the `.sha256`).
 - [ ] Cloudflare Email Routing: all rules are being retired (`DNS.md`,
