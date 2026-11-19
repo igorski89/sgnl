@@ -25,7 +25,7 @@
 # STALWART_RECOVERY_ADMIN is the break-glass admin that bin/stalwart-apply
 # authenticates as. It stays set so the plan can be re-applied. It's a
 # long random secret, auto-ban applies to it like any login, and it
-# doesn't depend on Keycloak being up. Rotate by changing the Keychain
+# doesn't depend on Keycloak being up. Rotate by changing the vault
 # value and redeploying.
 service: sgnl-stalwart
 image: sgnl-stalwart

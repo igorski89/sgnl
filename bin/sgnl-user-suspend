@@ -44,8 +44,9 @@ case ${1:-} in
 esac
 user=${1:-}
 [[ $user =~ ^[a-z][a-z0-9._-]{1,30}$ ]] || { echo "usage: $0 [--resume|--status] <username>" >&2; exit 1; }
-[[ $user != "$SGNL_ADMIN_USER" || ${SGNL_ALLOW_SELF:-} == 1 ]] || {
-  echo "refusing to suspend $SGNL_ADMIN_USER (the first admin) without SGNL_ALLOW_SELF=1" >&2; exit 1; }
+# Guard against locking out the first admin; --status only reads.
+[[ $mode == status || $user != "$SGNL_ADMIN_USER" || ${SGNL_ALLOW_SELF:-} == 1 ]] || {
+  echo "refusing to $mode $SGNL_ADMIN_USER (the first admin) without SGNL_ALLOW_SELF=1" >&2; exit 1; }
 
 kc() { "$(dirname "$0")/sgnl-secret" "$1"; }
 failed=0
@@ -104,7 +105,7 @@ stalwart_step() {
 # --- 3. Forgejo -----------------------------------------------------------
 forgejo_step() {
   echo "Forgejo (web + git tokens)"
-  local token; token=$(kc forgejo-admin-token) || { warn "no Keychain $SGNL_PREFIX-forgejo-admin-token"; return; }
+  local token; token=$(kc forgejo-admin-token) || { warn "no secret $SGNL_PREFIX-forgejo-admin-token"; return; }
   api() { curl -fsS -H "Authorization: token $token" -H 'Content-Type: application/json' "$@"; }
   local u; u=$(api "$FORGEJO/api/v1/admin/users?limit=50" 2>/dev/null |
     jq -c --arg u "$user" '.[] | select(.login==$u) | {login_name, source_id, prohibit_login}')

@@ -104,6 +104,18 @@ dump_pg() { # <name> <container> <db user = db name>
 dump_pg keycloak sgnl-keycloak-postgres keycloak
 dump_pg listmonk sgnl-listmonk-postgres listmonk
 
+# Staging holds exactly the volumes in APPS plus the database dumps above.
+# Anything else (a retired app, a migrated volume) is removed, so it leaves
+# the next snapshot instead of being backed up again every night.
+keep=" keycloak listmonk "
+for entry in "${APPS[@]}"; do keep+="${entry#* } "; done
+for dir in "$STAGING"/*/; do
+  name=$(basename "$dir")
+  [[ $keep == *" $name "* ]] && continue
+  echo "staging: removing $name (no longer backed up; older snapshots keep it)"
+  rm -rf "${STAGING:?}/$name"
+done
+
 echo "==> restic backup"
 restic cat config >/dev/null 2>&1 || restic init
 restic backup /staging /config --host sgnl --tag daily

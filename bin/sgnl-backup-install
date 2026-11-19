@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs (or updates) the nightly backup on the host: script, systemd
-# units, and the two root-only env files built from the Keychain.
+# units, and the two root-only env files built from the vault (bin/sgnl-secret).
 # Idempotent; re-run after changing host/backup/* or rotating a key.
 # See docs/BACKUPS.md.
 #

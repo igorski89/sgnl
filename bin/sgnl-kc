@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """People and groups in Keycloak (realm example), as the agent's
 service account `sgnl-agent` (client credentials; its secret comes from
-the Keychain, item example-sgnl-keycloak-sgnl-agent-client-secret).
+the vault, item example-sgnl-keycloak-sgnl-agent-client-secret).
 Rights: manage/view users, groups, events - not realm settings (those are
 keycloak/realm.yaml). See docs/USERS.md.
 
@@ -28,8 +28,6 @@ need sgnl_users), so no app creates an account from the personal address
 (Forgejo would name it after it). finish-invite sets <user>@example.com
 and swaps sgnl_invited for the given groups (sgnl_users is always added).
 
-Creating someone with a *given* id (to keep their Authelia `sub`) needs
-the master admin: bin/sgnl-kcimport (one-time migration step).
 """
 import json, os, subprocess, sys, urllib.error, urllib.parse, urllib.request
 
@@ -42,7 +40,7 @@ ADMIN = f"{BASE}/admin/realms/{REALM}"
 DOMAIN = I["SGNL_DOMAIN"]
 
 
-def keychain(name):
+def secret(name):
     # bin/sgnl-secret (Vaultwarden); the name is historical.
     r = subprocess.run([os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgnl-secret"), name], capture_output=True, text=True)
     if r.returncode:
@@ -72,7 +70,7 @@ def api(method, path, body=None, **params):
     if _token is None:
         _, t, _ = request("POST", f"{BASE}/realms/{REALM}/protocol/openid-connect/token",
                           form={"grant_type": "client_credentials", "client_id": "sgnl-agent",
-                                "client_secret": keychain("keycloak-sgnl-agent-client-secret")})
+                                "client_secret": secret("keycloak-sgnl-agent-client-secret")})
         _token = t["access_token"]
     q = ("?" + urllib.parse.urlencode(params)) if params else ""
     return request(method, f"{ADMIN}{path}{q}", body=body, token=_token)

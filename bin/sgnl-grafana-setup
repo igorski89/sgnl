@@ -12,7 +12,7 @@
 # File provisioning can't create orgs, and Grafana refuses to start if a
 # provisioning file names an org that doesn't exist yet.
 #
-# Logs in as the break-glass `admin` (password from the Keychain, sent on
+# Logs in as the break-glass `admin` (password from the vault, sent on
 # stdin, never on argv); the session cookie lives in a temp file that is
 # removed on exit.
 set -euo pipefail

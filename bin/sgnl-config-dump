@@ -7,7 +7,7 @@
 #
 #   bin/sgnl-config-dump <out-dir>
 #
-# Secrets: run with fake ones, SGNL_SECRETS=csv:<file with fake values>;
+# Secrets: run with fake ones, SGNL_SECRETS=dummy (FAKE-<name>);
 # Kamal's parsed config only holds secret *names* anyway.
 require "kamal"
 require "yaml"

@@ -13,7 +13,7 @@ terraform {
 }
 
 # Credentials come from the standard AWS provider chain. With ./tf that's
-# AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, read from the Keychain by
+# AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, read from the vault (bin/sgnl-secret) by
 # .docker-aws-env - nothing AWS-specific is hardcoded here.
 
 provider "aws" {

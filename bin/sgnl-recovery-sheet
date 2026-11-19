@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Makes the SGNL recovery sheet: docs/instance-sheet.html filled in with
-the restic password and R2 key from the Keychain, as a password-protected
+the restic password and R2 key from the vault, as a password-protected
 PDF (AES-256). Opens with a double-click anywhere (Preview, iPhone, any
 browser); Preview asks for the password. Run it in your own terminal: it
 asks for the password twice (hidden) and hands it to qpdf over stdin,

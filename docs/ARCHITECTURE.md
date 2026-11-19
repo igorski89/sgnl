@@ -167,7 +167,7 @@ cp -R instance.example instance && cd instance && git init   # then edit sgnl.en
 
 `instance.example/` is a complete instance with example values: every
 config renders with it (`SGNL_INSTANCE_DIR=instance.example
-SGNL_SECRETS=csv:instance.example/dummy-secrets.csv bin/sgnl-config-dump
+SGNL_SECRETS=dummy bin/sgnl-config-dump
 /tmp/out`). `bin/sgnl-split-check` lists anything outside `instance/`
 that names your instance (run it before contributing back).
 

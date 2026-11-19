@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Proves the break-glass copy in Apple Passwords opens the backups,
-# without the Keychain or the server: asks for the restic password and
+# without the vault or the server: asks for the restic password and
 # the R2 key (paste each from Passwords; input is hidden), then, on this
 # Mac via Docker, lists the latest snapshots and restores /config
 # (Stalwart's config, small) into a temp dir that is deleted afterwards.

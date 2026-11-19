@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Export the live SGNL Keychain secrets as a CSV for Apple Passwords
+"""Export the live SGNL secrets (bin/sgnl-secret) as a CSV for Apple Passwords
 (File -> Import Passwords...), the break-glass copy kept outside SGNL
 (instance/docs/PLAN-recovery.md, step C).
 
   bin/sgnl-breakglass-export <out.csv>
   bin/sgnl-breakglass-export -          # to stdout (bin/sgnl-bootstrap-push)
 
-Username = the Keychain service name, so a new laptop's Keychain can be
-rebuilt from Passwords. Values are never printed. The file is created
+Username = the item name, so the vault can be rebuilt from Passwords. Values are never printed. The file is created
 0600 and must not exist yet; delete it right after the import:
   rm -P <out.csv>
 
-Fails if the Keychain has a example-sgnl-* item not listed below
-(LIVE or DEAD), so a new secret can't be silently left out. Re-run and
-re-import after adding or rotating a secret.
+Every <prefix>-* secret in the store is exported (except RETIRED), so a
+new secret is never left out; KNOWN only gives the familiar ones a title
+and a note (others get a generic title). Re-run and re-import after
+adding or rotating a secret.
 """
 import csv, json, os, subprocess, sys
 
@@ -24,8 +24,8 @@ PREFIX = I["SGNL_PREFIX"] + "-"
 S = I["SGNL_APPS_DOMAIN"]
 BUCKET = I["SGNL_BACKUP_BUCKET"]
 
-# key: (title, url, notes)
-LIVE = {
+# key: (title, url, notes) - optional descriptions, not a required list
+KNOWN = {
     "restic-password":                 ("SGNL backups: restic password", f"https://{S}", "MOST IMPORTANT. Decrypts the nightly backups in Cloudflare R2 (bucket " + BUCKET + "). Without it no restore. docs/BACKUPS.md"),
     "backup-s3-access-key-id":         ("SGNL backups: R2 access key ID", f"https://{S}", "R2 token, read+write on " + BUCKET + " only. Can be recreated in Cloudflare."),
     "backup-s3-secret-access-key":     ("SGNL backups: R2 secret key", f"https://{S}", "R2 token, read+write on " + BUCKET + " only. Can be recreated in Cloudflare."),
@@ -59,9 +59,8 @@ LIVE = {
     "bulwark-admin-password":          ("SGNL Bulwark admin", f"https://inbox.{S}", "Webmail admin."),
     "bulwark-session-secret":          ("SGNL Bulwark session secret", f"https://inbox.{S}", "Webmail sessions."),
 }
-# Left in the Keychain but no longer used (removed apps / Authelia-era clients).
-LATER = {"vaultwarden-org-client-id", "vaultwarden-org-client-secret"}  # docs/DEPLOY.md §5
-DEAD = {
+# Names of removed apps' secrets, never exported if they still exist somewhere.
+RETIRED = {
     "authelia-jwt-secret", "authelia-session-secret", "authelia-storage-encryption-key",
     "lldap-admin-password", "lldap-authelia-password", "lldap-jwt-secret", "lldap-key-seed",
     "nextcloud-admin-password", "nextcloud-oidc-client-secret", "nextcloud-postgres-password",
@@ -84,17 +83,9 @@ def main():
         sys.exit(__doc__)
     path = sys.argv[1]
 
-    values = store_items()
-    found = set(values)
-    unknown = found - set(LIVE) - DEAD
-    if unknown:
-        sys.exit("not listed in LIVE or DEAD, add them first: " + ", ".join(sorted(unknown)))
-    # Secrets that only exist once a later setup step is done (a fresh
-    # instance doesn't have them yet): exported when present.
-    missing = set(LIVE) - found - LATER
-    if missing:
-        sys.exit("listed in LIVE but not in the secret store: " + ", ".join(sorted(missing)))
-
+    values = {k: v for k, v in store_items().items() if k not in RETIRED}
+    if not values:
+        sys.exit("no secrets found in the store")
     if path == "-":
         f = sys.stdout
     else:
@@ -102,13 +93,11 @@ def main():
     with f:
         w = csv.writer(f)
         w.writerow(["Title", "URL", "Username", "Password", "Notes", "OTPAuth"])
-        for key, (title, url, notes) in LIVE.items():
-            if key not in values:
-                continue
+        for key in sorted(values):
+            title, url, notes = KNOWN.get(key, (f"SGNL {key}", f"https://{S}", ""))
             w.writerow([title, url, PREFIX + key, values[key], notes, ""])
 
-    print(f"{len(set(LIVE) & found)} live items written to {path} "
-          f"({len(found)} in the store, {len(DEAD & found)} dead skipped)", file=sys.stderr)
+    print(f"{len(values)} items written to {path} ({len(set(values) - set(KNOWN))} without a description)", file=sys.stderr)
 
 
 main()

@@ -15,7 +15,7 @@ root's**. See `bootstrap/README.md` first: it walks root through
 creating a properly-scoped IAM user (`example-sgnl-terraform`, policy in
 `bootstrap/terraform-policy.json`) via CloudShell, so a root access key
 never has to exist. Everything below assumes that's done and the
-key is in the Keychain (`bootstrap/README.md` step 3), where `./tf` and
+key is in the vault (`bin/sgnl-secret`) (`bootstrap/README.md` step 3), where `./tf` and
 `./awscli` pick it up.
 
 ## Before `terraform apply`
@@ -43,7 +43,7 @@ Commands below use `./tf` and `./awscli` — wrappers around the official
    switch (`../docs/DEPLOY.md` step 3).
 2. The Lambda logs in to Stalwart as `ses-relay@example.com` with
    an **app password**. `../bin/stalwart-relay-app-password` creates it in
-   Stalwart, stores it in the Keychain
+   Stalwart, stores it in the vault (`bin/sgnl-secret`)
    (`example-sgnl-ses-relay-app-password`) and writes it into
    Secrets Manager. Terraform never sees it, and the operator key can
    write the secret but not read it back. Re-run the script to rotate:

@@ -17,7 +17,7 @@ describes the Keycloak setup.
 Secrets: every `example-sgnl-*` value is a Login item in Vaultwarden
 (the organisation's collection `SGNL`, §5; before the organisation
 exists, the personal folder "SGNL infra"), read through
-`bin/sgnl-secret` (Keychain until 2026-11). Unlock once per terminal,
+`bin/sgnl-secret`. Unlock once a day,
 `bin/sgnl-unlock` (once a day; `bin/sgnl-lock` at the end), and run Kamal as
 `bin/sgnl-env kamal ...` (one lookup instead of 19).
 
