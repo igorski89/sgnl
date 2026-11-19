@@ -42,6 +42,11 @@ servers:
         - "465:465"
         - "993:993"
 
+# 1.x needs ~30 s to answer /healthz/live after a start (more on the first
+# start after the migration, while it queues the search index rebuild);
+# Kamal's default wait is 30 s.
+deploy_timeout: 180
+
 proxy:
   ssl: true
   host: mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
