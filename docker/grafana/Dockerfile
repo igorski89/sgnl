@@ -5,7 +5,7 @@
 # the image; provisioning/dashboards/dashboards.yml).
 # The Logs org's datasources and dashboard (logs-org/) are not in the
 # image either: bin/sgnl-grafana-setup applies them through the API.
-FROM grafana/grafana:13.2.4
+FROM grafana/grafana:13.3.1
 # Plugins outside /var/lib/grafana: that is the data volume, which would
 # hide what the image installs there.
 ENV GF_PATHS_PLUGINS=/var/lib/grafana-plugins
