@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Deploys one app the safe way: a committed tree only (so the image tag is a
+# real commit, never "_uncommitted"), stop-first for the apps that can't run
+# twice on the same data (Forgejo, Stalwart: docs/DEPLOY.md), secrets via
+# bin/sgnl-env, then checks the app answers on its public URL.
+#
+#   bin/sgnl-deploy <app>          # e.g. bulwark, forgejo, stalwart
+#   bin/sgnl-deploy --all          # every app, least critical first
+#
+# <app> = the <app> in config/deploy.<app>.yml. Accessories (databases,
+# monitoring parts) are not touched; use kamal accessory ... for those.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source lib/instance.sh
+
+STOP_FIRST=" forgejo stalwart "   # second container can't open the same store
+ORDER=(dashy bulwark listmonk monitoring collabora opencloud vaultwarden keycloak forgejo stalwart)
+
+[[ $# == 1 ]] || { echo "usage: $0 <app> | --all" >&2; exit 1; }
+[[ -z $(git status --porcelain) ]] || {
+  echo "uncommitted changes: commit first (the image tag must be a real commit)" >&2; git status --short >&2; exit 1; }
+
+deploy_one() {
+  local app=$1 cfg=config/deploy.$1.yml host path
+  [[ -f $cfg ]] || { echo "no $cfg" >&2; return 1; }
+  echo "==> $app ($(git rev-parse --short HEAD))"
+  if [[ $STOP_FIRST == *" $app "* ]]; then
+    echo "    stop first: $app can't run two containers on its data (brief downtime)"
+    bin/sgnl-env kamal app stop -c "$cfg" >/dev/null
+  fi
+  bin/sgnl-env kamal deploy -c "$cfg" > >(grep -E "ERROR|healthy|Finished all" >&2) 2>&1 || {
+    echo "    DEPLOY FAILED: $app (kamal keeps the old container unless it was stopped first;" >&2
+    echo "    then: bin/sgnl-env kamal app boot -c $cfg --version <previous tag>)" >&2; return 1; }
+  # Public check: proxy host + healthcheck path from the config.
+  read -r host path < <(ruby -rkamal -e '
+    c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
+    p = c.raw_config.to_h[:proxy] || {}
+    puts [p[:host], (p.dig(:healthcheck, :path) || "/")].join(" ")' "$cfg" 2>/dev/null) || true
+  if [[ -n ${host:-} ]]; then
+    local code; code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$host$path")
+    [[ $code =~ ^(2|3)[0-9][0-9]$ ]] || { echo "    CHECK FAILED: https://$host$path -> $code" >&2; return 1; }
+    echo "    https://$host$path -> $code"
+  fi
+}
+
+if [[ $1 == --all ]]; then
+  for app in "${ORDER[@]}"; do deploy_one "$app" || exit 1; done
+else
+  deploy_one "$1"
+fi
