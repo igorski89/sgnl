@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Before anything reaches the public repo: the commits being pushed must
+# name no instance (bin/sgnl-split-check), contain nothing gitleaks flags
+# (.gitleaks.toml) and no real secret value from the vault. Runs only for
+# the SGNL repo itself; the private instance repo (instance/) is skipped.
+# A locked vault refuses the push (bin/sgnl-unlock). Emergency override,
+# knowingly: SGNL_PUSH_UNCHECKED=1 git push
+set -euo pipefail
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+[[ $(git rev-parse --show-toplevel) == "$root" ]] || exit 0
+[[ -n ${SGNL_PUSH_UNCHECKED:-} ]] && { echo "pre-push: checks SKIPPED (SGNL_PUSH_UNCHECKED)" >&2; exit 0; }
+
+zero=0000000000000000000000000000000000000000
+fail() { echo "pre-push: $*" >&2; exit 1; }
+while read -r _ sha _ _; do
+  [[ $sha == "$zero" ]] && continue   # branch deletion
+  t=$(mktemp -d); trap 'rm -rf "${t:?}"' EXIT
+  git archive "$sha" | tar -x -C "$t"
+  echo "pre-push: checking ${sha:0:7}" >&2
+  "$root/bin/sgnl-split-check" "$t" >/dev/null || { "$root/bin/sgnl-split-check" "$t" >&2 || true; fail "instance-specific content (above)"; }
+  docker run --rm -v "$t:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
+    --no-banner --redact >&2 || fail "gitleaks found something (above)"
+  "$root/bin/sgnl-secret" --json | python3 -c '
+import json, subprocess, sys
+vals = set()
+for v in json.load(sys.stdin).values():
+    v = str(v).strip()
+    if len(v) >= 8:
+        vals.add(v); vals.update(p for p in v.replace(":", " ").split() if len(p) >= 12)
+r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1]], input="\n".join(vals), text=True, capture_output=True)
+if r.stdout.strip():
+    sys.exit("a real secret value is in: " + r.stdout.strip())' "$t" || fail "secret check failed (vault locked? bin/sgnl-unlock)"
+  rm -rf "${t:?}"; trap - EXIT
+done
+echo "pre-push: ok" >&2

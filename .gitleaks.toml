@@ -1,0 +1,12 @@
+# gitleaks config for this repo (pre-push hook, CI): the default rules,
+# minus known fakes.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Vector redaction tests: made-up keys and tokens by design"
+paths = ['''monitoring/vector/tests\.yaml''']
+
+[[allowlists]]
+description = "Keycloak's database URL: a host and port, no password"
+regexes = ['''jdbc:postgresql://sgnl-keycloak-db:5432/keycloak''']
