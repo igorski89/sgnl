@@ -97,4 +97,8 @@ env:
     FORGEJO__mailer__SMTP_PORT: "587"
     FORGEJO__mailer__FROM: "SGNL Git <git@<%= ENV.fetch("SGNL_DOMAIN") %>>"
     FORGEJO__log__LEVEL: "Info"
+    # Forgejo 17 ships git 2.54, whose new "geometric" maintenance breaks
+    # some repositories' health checks (codeberg.org/forgejo/forgejo/issues/15141,
+    # open 2026-11-20): keep the classic strategy until that's fixed.
+    FORGEJO__git_0x2E_config__maintenance_0x2E_strategy: "gc"
     FORGEJO__cron__ENABLED: "true"

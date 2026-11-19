@@ -3,4 +3,4 @@
 # verified to exist on 2026-10-09 - bump deliberately, never `latest`.
 # 15.x is the LTS line (16.x reaches end of support 2026-10-29). Rootless:
 # runs as git (uid 1000), everything under /var/lib/gitea.
-FROM codeberg.org/forgejo/forgejo:15.0.12-rootless
+FROM codeberg.org/forgejo/forgejo:17.0.2-rootless
