@@ -177,7 +177,7 @@ Notes:
 ## 4. Bulwark
 
 ```bash
-kamal setup -c config/deploy.bulwark.yml
+kamal accessory boot web -c config/deploy.bulwark.yml   # an accessory: vendor image, no build
 ```
 
 `https://inbox.sgnl.example.com` → "Sign in" → Keycloak → inbox.
@@ -235,7 +235,7 @@ Keycloak switch, `../instance/docs/PLAN-keycloak.md`).
 
 ```bash
 kamal accessory boot postgres -c config/deploy.listmonk.yml   # its own Postgres
-kamal setup -c config/deploy.listmonk.yml   # first start creates the schema and the
+kamal accessory boot web -c config/deploy.listmonk.yml   # first start creates the schema and the
                                             # super admin (SGNL_ADMIN_USER, break-glass)
 bin/sgnl-keycloak-apply                     # client "listmonk"
 bin/sgnl-listmonk-setup                     # root URL, Keycloak login, admin's email
@@ -280,7 +280,7 @@ fails its health check. New image or env: `kamal app stop`, then
 
 ```bash
 # the four opencloud* clients are in keycloak/realm.yaml (bin/sgnl-keycloak-apply)
-kamal deploy -c config/deploy.collabora.yml    # hook generates the WOPI proof key once
+bin/sgnl-deploy collabora    # creates the WOPI proof key once, boots the accessory
 kamal deploy -c config/deploy.opencloud.yml    # hook uploads opencloud/csp.yaml + proxy.yaml
 bin/sgnl-backup-install --run
 ```

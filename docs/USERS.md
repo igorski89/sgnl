@@ -240,7 +240,7 @@ collections they see is config, not clicks:
 Dashy, configured only through `instance/dashy/conf.yml` in git (UI editing is
 off), logging in through Keycloak (client `dashy`). Each tile/section has
 `displayData.showForGroups: [<group>]`; a new app = a new item, then
-`kamal deploy -c config/deploy.dashy.yml`.
+`bin/sgnl-deploy dashy`.
 
 - Tiles are hints: the logged-in user's browser receives the whole
   config and hides what their groups don't match. Access is enforced by
