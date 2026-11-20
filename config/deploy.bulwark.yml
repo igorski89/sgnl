@@ -8,52 +8,51 @@
 # applied before Bulwark logins can work.
 #
 # Env var names: https://bulwarkmail.org/docs/getting-started/configuration/environment-reference
+#
+# Runs as a Kamal *accessory*: the unmodified vendor image behind
+# kamal-proxy, no Dockerfile/build/registry. Changes: bin/sgnl-deploy bulwark
+# (= kamal accessory reboot web): a few seconds down, no health-gated swap.
 service: sgnl-bulwark
-image: sgnl-bulwark
-
-servers:
-  web:
-    hosts:
-      - <%= ENV.fetch("SGNL_HOST") %>
-    options:
-      network-alias: sgnl-bulwark
-
-proxy:
-  ssl: true
-  host: inbox.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
-  app_port: 3000
-  healthcheck:
-    path: /api/health   # / and /up redirect to /en/... (307), which fails Kamal's check
-
+image: ghcr.io/bulwarkmail/webmail
+# registry/builder: required by Kamal's config check; nothing is built or pushed.
 registry:
   server: localhost:5555
-
 builder:
   arch: amd64
-  dockerfile: docker/bulwark/Dockerfile
-  context: docker/bulwark
 
-# Admin dashboard config, encrypted settings and audit log.
-volumes:
-  - "sgnl_bulwark_data:/app/data"
-
-env:
-  secret:
-    - OAUTH_CLIENT_SECRET:KEYCLOAK_BULWARK_CLIENT_SECRET
-    - SESSION_SECRET:BULWARK_SESSION_SECRET
-    - ADMIN_PASSWORD:BULWARK_ADMIN_PASSWORD
-  clear:
-    # Setting this also disables Bulwark's first-run setup wizard.
-    JMAP_SERVER_URL: "https://mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
-    OAUTH_ENABLED: "true"
-    OAUTH_ONLY: "true"
-    OAUTH_CLIENT_ID: "bulwark"
-    OAUTH_ISSUER_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
-    OAUTH_SCOPES: "openid email profile offline_access"
-    # Revoke Bulwark's own tokens on logout but don't try RP-initiated
-    # logout at Keycloak (its session ends on its own: 8 h idle).
-    OAUTH_END_SESSION: "false"
-    # Don't expose Stalwart admin functions through the webmail UI.
-    STALWART_ADMIN_ACCESS: "off"
-    BULWARK_TELEMETRY: "off"
-    BULWARK_UPDATE_CHECK: "off"
+accessories:
+  web:
+    # Bulwark >= 1.18 works with Stalwart 1.x.
+    image: ghcr.io/bulwarkmail/webmail:1.21.2
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-bulwark
+    proxy:
+      ssl: true
+      host: inbox.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+      app_port: 3000
+      healthcheck:
+        path: /api/health   # / and /up redirect to /en/... (307), which fails Kamal's check
+    # Admin dashboard config, encrypted settings and audit log.
+    volumes:
+      - "sgnl_bulwark_data:/app/data"
+    env:
+      secret:
+        - OAUTH_CLIENT_SECRET:KEYCLOAK_BULWARK_CLIENT_SECRET
+        - SESSION_SECRET:BULWARK_SESSION_SECRET
+        # Setting this also disables Bulwark's first-run setup wizard.
+        - ADMIN_PASSWORD:BULWARK_ADMIN_PASSWORD
+      clear:
+        JMAP_SERVER_URL: "https://mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+        OAUTH_ENABLED: "true"
+        OAUTH_ONLY: "true"
+        OAUTH_CLIENT_ID: "bulwark"
+        OAUTH_ISSUER_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
+        OAUTH_SCOPES: "openid email profile offline_access"
+        # Revoke Bulwark's own tokens on logout but don't try RP-initiated
+        # logout at Keycloak (its session ends on its own: 8 h idle).
+        OAUTH_END_SESSION: "false"
+        # Don't expose Stalwart admin functions through the webmail UI.
+        STALWART_ADMIN_ACCESS: "off"
+        BULWARK_TELEMETRY: "off"
+        BULWARK_UPDATE_CHECK: "off"
