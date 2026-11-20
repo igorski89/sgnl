@@ -11,5 +11,5 @@
 # alerts@: monitoring alerts (Alertmanager via SES, config/deploy.monitoring.yml).
 # Same members as admin@. Lives on this host, so a host-down alert can't reach it.
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alerts-group":{"@type":"Group","name":"alerts","domainId":"#mail-domain","description":"alerts@: monitoring alerts (shared mailbox)"}}}
-{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alice":{"@type":"User","name":"alice","domainId":"#mail-domain","description":"Alice Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true},"aliases":{"0":{"name":"postmaster","domainId":"#mail-domain","enabled":true}}}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alice":{"@type":"User","name":"alice","domainId":"#mail-domain","description":"Alice Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true},"aliases":{"0":{"name":"postmaster","domainId":"#mail-domain","enable":true}}}}}
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"bob":{"@type":"User","name":"bob","domainId":"#mail-domain","description":"Bob Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true}}}}
