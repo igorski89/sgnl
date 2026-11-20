@@ -5,7 +5,7 @@ Nightly, encrypted, off-site. Live since 2026-10-08 (first snapshot
 
 | | |
 |---|---|
-| What | Stalwart volume (all mail), Forgejo, Vaultwarden, OpenCloud (config + data), Keycloak (`pg_dump`, since 2026-10-18: users, groups, passwords, passkeys, clients, signing keys), `/opt/sgnl/stalwart` (config). Authelia and lldap left the backup on 2026-10-19 (replaced by Keycloak); snapshots that still contain them age out after 35 days |
+| What | Stalwart volume (all mail), Forgejo, Vaultwarden, OpenCloud (config + data), listmonk (`pg_dump` + uploads), Bulwark (admin config, per-user webmail settings), Keycloak (`pg_dump`, since 2026-10-18: users, groups, passwords, passkeys, clients, signing keys), `/opt/sgnl/stalwart` (config). Authelia and lldap left the backup on 2026-10-19 (replaced by Keycloak); snapshots that still contain them age out after 35 days |
 | When | 01:30 UTC (+ up to 10 min), systemd `sgnl-backup.timer`; cotenant's backup runs at 03:00 |
 | Where | Cloudflare R2, bucket `example-sgnl-backups` (EU jurisdiction, same account as cotenant) |
 | How | `host/backup/sgnl-backup.sh` on the host: rsync (`-aHAX`: keeps extended attributes, which OpenCloud needs) each volume to `/opt/sgnl/backup/staging`, `docker pause` the app for a second rsync (consistent copy, ~1–2 s), then restic (`restic/restic:0.19.1`). Keycloak's Postgres is not copied as files: `pg_dump -Fc` inside its container writes `staging/keycloak/keycloak.dump` (consistent, doesn't block Keycloak) |
