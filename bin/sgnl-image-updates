@@ -9,7 +9,8 @@ skopeo (in Docker), changes nothing.
   bin/sgnl-image-updates stalwart # only images whose name contains this
 
 Per image, among tags of the same shape (same "v" prefix, same number of
-version parts, same suffix such as -alpine or -rootless): the newest in
+version parts, same suffix such as -alpine or -rootless; a numeric
+suffix like keycloak-config-cli's -26.5.5 counts as a second version): the newest in
 the current major (usually safe, often security fixes), the newest
 major ("MAJOR": read the release notes first; Postgres majors also need
 a dump and restore), and for a pre-release (-beta.N, -rc.N) the newest
@@ -22,6 +23,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 SKOPEO = "quay.io/skopeo/stable:v1.20.0"
 VER = re.compile(r"^(v?)(\d+(?:\.\d+)*)(.*)$")
 PRE = re.compile(r"^-(alpha|beta|rc)\.?\d*$")
+SUFVER = re.compile(r"^-(\d+(?:\.\d+)*)$")   # e.g. keycloak-config-cli 6.5.1-26.5.5
+
+
+def sufver(suf):
+    m = SUFVER.match(suf)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
 
 
 def pinned():
@@ -83,14 +90,19 @@ def main():
                 rows.append((repo, tag, "? (not a version tag)", ", ".join(files)))
                 continue
             pre, nums, suf = cur
-            same = [(p[1], t) for t, p in parsed if p and p[0] == pre and len(p[1]) == len(nums) and p[2] == suf]
+            # A numeric suffix is a second version (the one it's built for):
+            # any suffix version counts, newest of both wins.
+            sv = sufver(suf)
+            same = [((p[1], sufver(p[2]) or ()), p[1], t) for t, p in parsed
+                    if p and p[0] == pre and len(p[1]) == len(nums) and (p[2] == suf or (sv and sufver(p[2])))]
+            key = (nums, sv or ())
             notes = []
-            minor = max((x for x in same if x[0] > nums and x[0][0] == nums[0]), default=None)
-            major = max((x for x in same if x[0][0] > nums[0]), default=None)
+            minor = max((x for x in same if x[0] > key and x[1][0] == nums[0]), default=None)
+            major = max((x for x in same if x[1][0] > nums[0]), default=None)
             if minor:
-                notes.append(minor[1])
+                notes.append(minor[2])
             if major:
-                notes.append(f"{major[1]} MAJOR")
+                notes.append(f"{major[2]} MAJOR")
             if PRE.match(suf):
                 rel = max(((p[1], t) for t, p in parsed if p and p[0] == pre and len(p[1]) == len(nums)
                            and p[2] == "" and p[1] >= nums), default=None)

@@ -2,21 +2,31 @@
 # Deploys one app the safe way: a committed tree only (so the image tag is a
 # real commit, never "_uncommitted"), stop-first for the apps that can't run
 # twice on the same data (Forgejo, Stalwart: docs/DEPLOY.md), secrets via
-# bin/sgnl-env, then checks the app answers on its public URL.
+# bin/sgnl-env, then checks the app answers on its public URL. A stop-first
+# deploy that fails boots the version that ran before. The full Kamal
+# output goes to ~/.cache/sgnl/deploy/; its end is shown on failure.
 #
-#   bin/sgnl-deploy <app>          # e.g. bulwark, forgejo, stalwart
-#   bin/sgnl-deploy --all          # every app, least critical first
+#   bin/sgnl-deploy <app>               # e.g. bulwark, forgejo, stalwart
+#   bin/sgnl-deploy --stop-first <app>  # e.g. keycloak version bumps
+#   bin/sgnl-deploy --all               # every app config, least critical first
 #
-# <app> = the <app> in config/deploy.<app>.yml. Accessories (databases,
-# monitoring parts) are not touched; use kamal accessory ... for those.
+# <app> = the <app> in config/deploy.<app>.yml. Accessory-only configs
+# (vendor images: dashy, bulwark, listmonk, collabora) reboot their
+# proxied accessory after pulling its image; --all leaves them out (name
+# them). Databases and monitoring parts are not touched; use kamal
+# accessory ... for those.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source lib/instance.sh
 
 STOP_FIRST=" forgejo stalwart "   # second container can't open the same store
-ORDER=(dashy bulwark listmonk monitoring collabora opencloud vaultwarden keycloak forgejo stalwart)
+ORDER=(monitoring opencloud vaultwarden keycloak forgejo stalwart)
+LOGS=$HOME/.cache/sgnl/deploy
 
-[[ $# == 1 ]] || { echo "usage: $0 <app> | --all" >&2; exit 1; }
+stop_flag=""
+[[ ${1:-} == --stop-first ]] && { stop_flag=1; shift; }
+[[ $# == 1 ]] || { echo "usage: $0 [--stop-first] <app> | --all" >&2; exit 1; }
+mkdir -p "$LOGS"
 [[ -z $(git status --porcelain) ]] || {
   echo "uncommitted changes: commit first (the image tag must be a real commit)" >&2; git status --short >&2; exit 1; }
 
@@ -26,23 +36,39 @@ deploy_one() {
   echo "==> $app ($(git rev-parse --short HEAD))"
   # Accessory-only configs (plain vendor images, e.g. dashy): restart the
   # accessories behind the proxy (the app; databases are left alone).
+  local log; log=$LOGS/$app-$(date +%Y%m%d-%H%M%S).log
   local accs; accs=$(ruby -rkamal -e '
     c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
-    puts c.raw_config.servers.nil? ? c.accessories.select(&:running_proxy?).map(&:name).join(" ") : ""' "$cfg" 2>/dev/null) || accs=""
+    c.accessories.select(&:running_proxy?).each { |a| puts "#{a.name} #{a.image}" } if c.raw_config.servers.nil?' "$cfg" 2>/dev/null) || accs=""
   [[ $app == collabora ]] && bin/sgnl-collabora-proof-key
   if [[ -n $accs ]]; then
-    for acc in $accs; do
+    local acc image
+    while read -r acc image; do
+      # Pull first: a wrong image tag fails here, while the old one still runs.
+      echo "    accessory $acc: pull $image"
+      ssh -n "root@$SGNL_HOST" docker pull -q "$image" >>"$log" 2>&1 || { tail -5 "$log" >&2; echo "    PULL FAILED: $image (nothing changed; log: $log)" >&2; return 1; }
       echo "    accessory $acc: reboot (a few seconds down)"
-      bin/sgnl-env kamal accessory reboot "$acc" -c "$cfg" >/dev/null || { echo "    REBOOT FAILED: $app/$acc" >&2; return 1; }
-    done
+      bin/sgnl-env kamal accessory reboot "$acc" -c "$cfg" </dev/null >>"$log" 2>&1 ||
+        { tail -25 "$log" >&2; echo "    REBOOT FAILED: $app/$acc (log: $log)" >&2; return 1; }
+    done <<<"$accs"
   else
-  if [[ $STOP_FIRST == *" $app "* ]]; then
-    echo "    stop first: $app can't run two containers on its data (brief downtime)"
-    bin/sgnl-env kamal app stop -c "$cfg" >/dev/null
-  fi
-  bin/sgnl-env kamal deploy -c "$cfg" > >(grep -E "ERROR|healthy|Finished all" >&2) 2>&1 || {
-    echo "    DEPLOY FAILED: $app (kamal keeps the old container unless it was stopped first;" >&2
-    echo "    then: bin/sgnl-env kamal app boot -c $cfg --version <previous tag>)" >&2; return 1; }
+    local prev=""
+    if [[ -n $stop_flag || $STOP_FIRST == *" $app "* ]]; then
+      prev=$(bin/sgnl-env kamal app version -q -c "$cfg" 2>/dev/null | awk NF | tail -1) || prev=""
+      echo "    stop first: $app can't run two containers on its data (brief downtime; running: ${prev:-none})"
+      bin/sgnl-env kamal app stop -c "$cfg" >>"$log" 2>&1
+    fi
+    if ! bin/sgnl-env kamal deploy -c "$cfg" 2>&1 | tee -a "$log" | { grep --line-buffered -E "ERROR|healthy|Finished all" >&2 || true; }; then
+      tail -25 "$log" >&2
+      echo "    DEPLOY FAILED: $app (log: $log)" >&2
+      if [[ -n $prev ]]; then
+        echo "    booting the previous version $prev" >&2
+        bin/sgnl-env kamal app boot -c "$cfg" --version "$prev" >>"$log" 2>&1 &&
+          echo "    previous version $prev is running again" >&2 ||
+          echo "    BOOT FAILED too: bin/sgnl-env kamal app boot -c $cfg --version $prev" >&2
+      fi   # without stop-first, kamal kept the old container running
+      return 1
+    fi
   fi
   # Public check: proxy host + healthcheck path from the config.
   read -r host path < <(ruby -rkamal -e '

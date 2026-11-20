@@ -18,7 +18,8 @@ Secrets: every `example-sgnl-*` value is a Login item in Vaultwarden
 (the organisation's collection `SGNL`, §5; before the organisation
 exists, the personal folder "SGNL infra"), read through
 `bin/sgnl-secret`. Unlock once a day,
-`bin/sgnl-unlock` (once a day; `bin/sgnl-lock` at the end), and run Kamal as
+`bin/sgnl-unlock` (once a day; `bin/sgnl-lock` at the end, or it locks
+itself after 12 h), and run Kamal as
 `bin/sgnl-env kamal ...` (one lookup instead of 19).
 
 **Restarting without a deploy** (`kamal app boot`, `kamal app
@@ -28,12 +29,18 @@ app boot -c config/deploy.<name>.yml --version <tag>` (tag from `docker
 ps` on the server: the part after the image's `:`). A normal `kamal
 deploy` builds the current tag, after which plain boots work again.
 
-**Deploying an app: `bin/sgnl-deploy <app>`** (or `--all`, least
-critical first). It refuses uncommitted changes (the image tag must be a
-real commit), stops Forgejo and Stalwart first (they can't run two
-containers on the same data; ~10 s and ~30 s down, incoming mail waits in
-SES/S3), deploys through `bin/sgnl-env`, then checks the app's public
-health URL. Plain `kamal deploy` still works for anything special.
+**Deploying an app: `bin/sgnl-deploy <app>`** (or `--all`: the apps
+Kamal builds, least critical first; accessory-only ones like Dashy go by
+name). It refuses uncommitted changes (the image tag must be a real
+commit), stops Forgejo and Stalwart first (they can't run two containers
+on the same data; ~10 s and ~30 s down, incoming mail waits in SES/S3),
+deploys through `bin/sgnl-env`, then checks the app's public health URL.
+`--stop-first <app>` stops any other app first too (Keycloak version
+bumps: a database migration). If a stop-first deploy fails, it boots the
+version that ran before. Accessory-only apps: the new image is pulled
+before the reboot, so a wrong tag changes nothing. Full Kamal output:
+`~/.cache/sgnl/deploy/`; its end is printed on failure. Plain `kamal
+deploy` still works for anything special.
 
 - [ ] AWS: scoped IAM user, not root — `../aws/bootstrap/README.md`. Use
       the current `terraform-policy.json` (it includes the DLQ/SQS

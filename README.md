@@ -45,6 +45,7 @@ no Kubernetes, nothing clever where something simple works.
 | 📁 | OpenCloud + Collabora | Files, sync, sharing, editing Word/Excel/PowerPoint in the browser |
 | 🔒 | Vaultwarden | Password manager (works with the Bitwarden apps) |
 | 🧑‍💻 | Forgejo | Git repositories, issues, pull requests |
+| 📣 | listmonk | Mailing lists and campaigns, sent through Amazon SES |
 | 🏠 | Dashy | A start page with every app, per person |
 | 📈 | Grafana + VictoriaMetrics | Monitoring, logs and alerts |
 | 💾 | restic → Cloudflare R2 | Nightly encrypted backups, with restore drills |
