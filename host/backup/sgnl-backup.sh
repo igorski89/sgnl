@@ -34,7 +34,7 @@ APPS=(
   "sgnl-vaultwarden sgnl_vaultwarden_data"
   "sgnl-opencloud sgnl_opencloud_config"
   "sgnl-opencloud sgnl_opencloud_data"
-  "sgnl-listmonk sgnl_listmonk_uploads"
+  "sgnl-listmonk-web sgnl_listmonk_uploads"
 )
 
 notify_failure() {

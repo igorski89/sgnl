@@ -34,7 +34,7 @@ cleanup() {
 trap cleanup EXIT
 cleanup
 
-LIVE=$(docker ps -qf label=service=sgnl-listmonk -f label=role=web | head -1)
+LIVE=$(docker ps -qf name='^sgnl-listmonk-web$' | head -1)
 [[ -n $LIVE ]] || { echo "live listmonk not running (needed for its image and for comparison)"; exit 1; }
 IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
 PGIMAGE=$(docker inspect --format '{{.Config.Image}}' sgnl-listmonk-postgres)
