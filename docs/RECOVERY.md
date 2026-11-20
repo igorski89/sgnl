@@ -60,6 +60,8 @@ python3 -c 'import csv,sys; print(sum(1 for _ in csv.DictReader(open(sys.argv[1]
 cp ../sgnl-bootstrap/aws/terraform.tf* aws/
 git config core.hooksPath .githooks
 git -C instance config core.hooksPath ../.githooks
+# Commits must not carry a private email (the push guard refuses them):
+git config user.email <your GitHub no-reply address>
 ```
 
 Keep `SGNL_SECRETS` exported in every shell until phase 6.

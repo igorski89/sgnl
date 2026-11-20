@@ -1,29 +1,38 @@
 #!/usr/bin/env bash
 # Before anything reaches the public repo: the commits being pushed must
 # name no instance (bin/sgnl-split-check), contain nothing gitleaks flags
-# (.gitleaks.toml) and no real secret value from the vault. Runs only for
-# the SGNL repo itself; the private instance repo (instance/) is skipped.
-# A locked vault refuses the push (bin/sgnl-unlock). Emergency override,
-# knowingly: SGNL_PUSH_UNCHECKED=1 git push
+# (.gitleaks.toml) and no real secret value from the vault. Checked: the
+# pushed tree, the lines every pushed commit adds (a secret added and
+# removed within the push stays in public history), and the commit
+# messages with author and committer (a clone without the no-reply email
+# would publish a private one). Runs only for the SGNL repo itself; the
+# private instance repo (instance/) is skipped. A locked vault refuses
+# the push (bin/sgnl-unlock). Emergency override, knowingly:
+# SGNL_PUSH_UNCHECKED=1 git push
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 [[ $(git rev-parse --show-toplevel) == "$root" ]] || exit 0
 [[ -n ${SGNL_PUSH_UNCHECKED:-} ]] && { echo "pre-push: checks SKIPPED (SGNL_PUSH_UNCHECKED)" >&2; exit 0; }
+# The real vault only: no csv/dummy store, no SGNL_SECRET_* stand-ins.
+export SGNL_SECRETS=bw
+for v in $(compgen -e | grep '^SGNL_SECRET_' || true); do unset "$v"; done
 
 zero=0000000000000000000000000000000000000000
 fail() { echo "pre-push: $*" >&2; exit 1; }
 while read -r _ sha _ rsha; do
   [[ $sha == "$zero" ]] && continue   # branch deletion
-  t=$(mktemp -d); trap 'rm -rf "${t:?}" "$t.lines"' EXIT
-  git archive "$sha" | tar -x -C "$t"
-  # Lines added by every pushed commit, not just the end state: a secret
-  # added and removed again within the push would stay in public history.
+  t=$(mktemp -d); trap 'rm -rf "${t:?}"' EXIT
+  mkdir "$t/tree" "$t/history"
+  git archive "$sha" | tar -x -C "$t/tree"
   if [[ $rsha == "$zero" ]]; then range=("$sha" --not --remotes); else range=("$rsha..$sha"); fi
-  git log -p --format= "${range[@]}" | grep '^+' > "$t/.pushed-lines" || true
-  echo "pre-push: checking ${sha:0:7}" >&2
-  mv "$t/.pushed-lines" "$t.lines"
-  "$root/bin/sgnl-split-check" "$t" >/dev/null || { "$root/bin/sgnl-split-check" "$t" >&2 || true; fail "instance-specific content (above)"; }
-  docker run --rm -v "$t:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
+  git log -p --format= "${range[@]}" | grep '^+' > "$t/history/added-lines" || true
+  git log --format='%an <%ae>%n%cn <%ce>%n%B' "${range[@]}" > "$t/history/commits"
+  echo "pre-push: checking ${sha:0:7} ($(git rev-list --count "${range[@]}") commits)" >&2
+  for d in tree history; do
+    "$root/bin/sgnl-split-check" "$t/$d" >/dev/null ||
+      { "$root/bin/sgnl-split-check" "$t/$d" >&2 || true; fail "instance-specific content in the pushed $d (above)"; }
+  done
+  docker run --rm -v "$t/tree:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
     --no-banner --redact >&2 || fail "gitleaks found something (above)"
   "$root/bin/sgnl-secret" --json | python3 -c '
 import json, subprocess, sys
@@ -32,9 +41,12 @@ for v in json.load(sys.stdin).values():
     v = str(v).strip()
     if len(v) >= 8:
         vals.add(v); vals.update(p for p in v.replace(":", " ").split() if len(p) >= 12)
-r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1], sys.argv[2]], input="\n".join(vals), text=True, capture_output=True)
+if not vals:
+    sys.exit("no secret values loaded: nothing to check against")
+r = subprocess.run(["grep", "-rlaF", "-f", "/dev/stdin", sys.argv[1]], input="\n".join(vals), text=True, capture_output=True)
 if r.stdout.strip():
-    sys.exit("a real secret value is in: " + r.stdout.strip().replace(sys.argv[2], "the pushed commits (history)"))' "$t" "$t.lines" || fail "secret check failed (see above; if the vault is locked: bin/sgnl-unlock)"
-  rm -rf "${t:?}" "$t.lines"; trap - EXIT
+    sys.exit("a real secret value is in: " + r.stdout.strip().replace(sys.argv[1] + "/", "the pushed "))' "$t" ||
+    fail "secret check failed (see above; if the vault is locked: bin/sgnl-unlock)"
+  rm -rf "${t:?}"; trap - EXIT
 done
 echo "pre-push: ok" >&2

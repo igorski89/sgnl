@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unlocks Vaultwarden once for every SGNL tool, terminal and agent session
 # (lib/bwsession.py): asks for the master password, writes the session
-# key to ~/.cache/sgnl/bw-session (600). Lock again with bin/sgnl-lock,
+# key to ~/.cache/sgnl/bw-session (600), good for 12 h (lib/bwsession.py). Lock again with bin/sgnl-lock,
 # e.g. at the end of the day.
 #
 #   bin/sgnl-unlock
@@ -19,4 +19,4 @@ key=$(bw unlock --raw)   # prompts for the master password
 umask 077
 mkdir -p "$(dirname "$F")"
 printf %s "$key" > "$F.tmp" && mv "$F.tmp" "$F"
-echo "Vaultwarden unlocked for all SGNL tools and agent sessions, until bin/sgnl-lock."
+echo "Vaultwarden unlocked for all SGNL tools and agent sessions, until bin/sgnl-lock (or 12 h)."

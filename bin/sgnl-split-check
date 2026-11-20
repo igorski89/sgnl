@@ -3,7 +3,7 @@
 # value in $SGNL_INSTANCE_DIR/sgnl.env, the extra patterns in
 # $SGNL_INSTANCE_DIR/split-check-patterns.txt (people, account IDs: one
 # PCRE per line, # comments), any IPv4 address and any email address
-# that isn't an example one. Nothing here names a real value, so the
+# that isn't an example or no-reply one. Nothing here names a real value, so the
 # check also scans itself. Exit 0 with "clean" when nothing matches.
 #
 #   bin/sgnl-split-check            # all hits, in this repo's tracked files
@@ -31,7 +31,7 @@ pats+=(
   # private ranges, 0.0.0.0 and version numbers (a.b.c.d.e).
   '(?<![\d.])(?!203\.0\.113\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0)(\d{1,3}\.){3}\d{1,3}(?![\d.])'
   # Any email address except example ones.
-  '[A-Za-z0-9._%+-]+@(?!example\.com|personal\.example|localhost|simulator\.amazonses\.com)[A-Za-z0-9.-]+\.[a-z]{2,}'
+  '[A-Za-z0-9._%+-]+@(?!example\.com|personal\.example|localhost|simulator\.amazonses\.com|users\.noreply\.github\.com|anthropic\.com\b)[A-Za-z0-9.-]+\.[a-z]{2,}'
 )
 args=(); for p in "${pats[@]}"; do args+=(-e "$p"); done
 
