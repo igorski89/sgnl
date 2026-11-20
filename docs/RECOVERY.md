@@ -62,6 +62,8 @@ git config core.hooksPath .githooks
 git -C instance config core.hooksPath ../.githooks
 # Commits must not carry a private email (the push guard refuses them):
 git config user.email <your GitHub no-reply address>
+# Pushing this repo checks against the real vault (.githooks/pre-push):
+# until phase 6 it refuses; push afterwards, nothing here needs a push.
 ```
 
 Keep `SGNL_SECRETS` exported in every shell until phase 6.

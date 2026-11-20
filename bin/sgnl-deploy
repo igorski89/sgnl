@@ -27,6 +27,18 @@ stop_flag=""
 [[ ${1:-} == --stop-first ]] && { stop_flag=1; shift; }
 [[ $# == 1 ]] || { echo "usage: $0 [--stop-first] <app> | --all" >&2; exit 1; }
 mkdir -p "$LOGS"
+# What gets shown of Kamal's output (it includes app logs when a boot
+# fails): every secret value and AWS key id replaced. The log file itself
+# stays complete (~/.cache, this Mac only).
+redact() {
+  bin/sgnl-env python3 -u -c '
+import os, re, sys
+vals = sorted({v for k, v in os.environ.items() if k.startswith("SGNL_SECRET_") and len(v) >= 8}, key=len, reverse=True)
+for line in sys.stdin:
+    for v in vals:
+        line = line.replace(v, "[secret]")
+    sys.stdout.write(re.sub(r"\b(AKIA|ASIA)[A-Z0-9]{16}\b", "[aws-key-id]", line))'
+}
 [[ -z $(git status --porcelain) ]] || {
   echo "uncommitted changes: commit first (the image tag must be a real commit)" >&2; git status --short >&2; exit 1; }
 
@@ -46,26 +58,34 @@ deploy_one() {
     while read -r acc image; do
       # Pull first: a wrong image tag fails here, while the old one still runs.
       echo "    accessory $acc: pull $image"
-      ssh -n "root@$SGNL_HOST" docker pull -q "$image" >>"$log" 2>&1 || { tail -5 "$log" >&2; echo "    PULL FAILED: $image (nothing changed; log: $log)" >&2; return 1; }
+      ssh -n "root@$SGNL_HOST" docker pull -q "$image" >>"$log" 2>&1 || { tail -5 "$log" | redact >&2; echo "    PULL FAILED: $image (nothing changed; log: $log)" >&2; return 1; }
       echo "    accessory $acc: reboot (a few seconds down)"
       bin/sgnl-env kamal accessory reboot "$acc" -c "$cfg" </dev/null >>"$log" 2>&1 ||
-        { tail -25 "$log" >&2; echo "    REBOOT FAILED: $app/$acc (log: $log)" >&2; return 1; }
+        { tail -25 "$log" | redact >&2; echo "    REBOOT FAILED: $app/$acc (log: $log)" >&2; return 1; }
     done <<<"$accs"
   else
     local prev=""
     if [[ -n $stop_flag || $STOP_FIRST == *" $app "* ]]; then
-      prev=$(bin/sgnl-env kamal app version -q -c "$cfg" 2>/dev/null | awk NF | tail -1) || prev=""
+      prev=$(bin/sgnl-env kamal app version -q -c "$cfg" 2>/dev/null | grep -Eo '^[0-9a-f]{40}$' | tail -1) || prev=""
       echo "    stop first: $app can't run two containers on its data (brief downtime; running: ${prev:-none})"
       bin/sgnl-env kamal app stop -c "$cfg" >>"$log" 2>&1
     fi
-    if ! bin/sgnl-env kamal deploy -c "$cfg" 2>&1 | tee -a "$log" | { grep --line-buffered -E "ERROR|healthy|Finished all" >&2 || true; }; then
-      tail -25 "$log" >&2
+    if ! bin/sgnl-env kamal deploy -c "$cfg" 2>&1 | tee -a "$log" | { grep --line-buffered -E "ERROR|healthy|Finished all" || true; } | redact >&2; then
+      tail -25 "$log" | redact >&2
       echo "    DEPLOY FAILED: $app (log: $log)" >&2
-      if [[ -n $prev ]]; then
-        echo "    booting the previous version $prev" >&2
+      if [[ -n $prev ]] && ! grep -q "docker run --detach" "$log"; then
+        # The new version never started (build, push, pull, network):
+        # the data is as the old version left it.
+        echo "    the new version never started: booting the previous one, $prev" >&2
         bin/sgnl-env kamal app boot -c "$cfg" --version "$prev" >>"$log" 2>&1 &&
           echo "    previous version $prev is running again" >&2 ||
           echo "    BOOT FAILED too: bin/sgnl-env kamal app boot -c $cfg --version $prev" >&2
+      elif [[ -n $prev ]]; then
+        # It started, so it may have migrated the data: an older version on
+        # a newer schema is no rollback. Read the log first.
+        echo "    $app is DOWN. The new version started and may have migrated its data, so" >&2
+        echo "    booting $prev isn't safe without checking. Without a migration:" >&2
+        echo "    bin/sgnl-env kamal app boot -c $cfg --version $prev; with one: restore (docs/BACKUPS.md)." >&2
       fi   # without stop-first, kamal kept the old container running
       return 1
     fi

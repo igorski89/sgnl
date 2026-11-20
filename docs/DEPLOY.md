@@ -36,10 +36,14 @@ commit), stops Forgejo and Stalwart first (they can't run two containers
 on the same data; ~10 s and ~30 s down, incoming mail waits in SES/S3),
 deploys through `bin/sgnl-env`, then checks the app's public health URL.
 `--stop-first <app>` stops any other app first too (Keycloak version
-bumps: a database migration). If a stop-first deploy fails, it boots the
-version that ran before. Accessory-only apps: the new image is pulled
+bumps: a database migration). If a stop-first deploy fails before the
+new version started (build, push, network), it boots the version that ran
+before; if the new version had started, it may have migrated the data, so
+it leaves the app stopped and says what to check (an older version on a
+newer schema is no rollback; then restore, BACKUPS.md). Accessory-only apps: the new image is pulled
 before the reboot, so a wrong tag changes nothing. Full Kamal output:
-`~/.cache/sgnl/deploy/`; its end is printed on failure. Plain `kamal
+`~/.cache/sgnl/deploy/`; its end is printed on failure, with secret
+values and AWS key ids masked. Plain `kamal
 deploy` still works for anything special.
 
 - [ ] AWS: scoped IAM user, not root — `../aws/bootstrap/README.md`. Use
