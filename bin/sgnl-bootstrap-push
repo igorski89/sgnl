@@ -83,10 +83,12 @@ def main():
     restic = ["docker", "run", "--rm", "-i", "-e", "RESTIC_REPOSITORY", "-e", "RESTIC_PASSWORD",
               "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", IMAGE]
 
-    subprocess.run(restic + ["backup", "--stdin", "--stdin-filename", "sgnl-bootstrap.tar",
+    # --retry-lock: two commits in quick succession (outer + instance repo),
+    # or the nightly backup, may hold the repository lock for a moment.
+    subprocess.run(restic + ["--retry-lock", "5m", "backup", "--stdin", "--stdin-filename", "sgnl-bootstrap.tar",
                              "--host", "bootstrap", "--tag", "bootstrap", "--quiet"],
                    input=buf.getvalue(), env=env, check=True)
-    subprocess.run(restic + ["forget", "--host", "bootstrap", "--keep-last", "30",
+    subprocess.run(restic + ["--retry-lock", "5m", "forget", "--host", "bootstrap", "--keep-last", "30",
                              "--keep-daily", "90", "--keep-monthly", "12", "--quiet"],
                    env=env, check=False)
     short = ", ".join(c.split(": ")[0] + " " + c.split(": ")[1][:7] for c in commits)

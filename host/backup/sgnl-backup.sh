@@ -55,7 +55,7 @@ restic() { # time-limited, so a stuck restic fails (and emails) instead of hangi
     -v "$STAGING:/staging:ro" \
     -v /opt/sgnl/stalwart:/config/stalwart:ro \
     -v "$BASE/cache:/root/.cache/restic" \
-    "$RESTIC_IMAGE" "$@"
+    "$RESTIC_IMAGE" --retry-lock 10m "$@"   # a bundle push from the laptop may hold the lock briefly
 }
 
 # rsync -aHAX, not just -a: OpenCloud keeps file metadata (space, ids,
