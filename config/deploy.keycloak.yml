@@ -41,6 +41,9 @@ deploy_timeout: 120
 registry:
   server: localhost:5555
 
+# Old versions kept on the server for kamal rollback (default 5; disk).
+retain_containers: 2
+
 builder:
   arch: amd64
   dockerfile: docker/keycloak/Dockerfile
