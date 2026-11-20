@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Runs every restore drill (bin/sgnl-backup-restore-test*) against the
+# latest snapshot, one after the other, and prints a summary. Monthly, and
+# after any upgrade of an app or a database. Exit 1 if any drill failed.
+#
+#   bin/sgnl-backup-restore-test-all
+set -uo pipefail
+cd "$(dirname "$0")/.."
+results=() failed=0
+for t in bin/sgnl-backup-restore-test bin/sgnl-backup-restore-test-*; do
+  [[ $t == */sgnl-backup-restore-test-all ]] && continue
+  name=${t#bin/sgnl-backup-restore-test}; name=${name#-}; name=${name:-stalwart}
+  echo "===== $name"
+  start=$(date +%s)
+  if bin/sgnl-env "$t" 2>&1 | grep -v AKIA | tail -4; [[ ${PIPESTATUS[0]} == 0 ]]; then
+    results+=("ok      $name ($(( $(date +%s) - start ))s)")
+  else
+    results+=("FAILED  $name"); failed=1
+  fi
+done
+echo; echo "===== summary"; printf '%s\n' "${results[@]}"
+exit $failed

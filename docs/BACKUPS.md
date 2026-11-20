@@ -51,6 +51,7 @@ delete the old token.
 bin/sgnl-backup-install            # install/update script, units, env files; enables the timer
 bin/sgnl-backup-install --run      # ...and back up now
 bin/sgnl-backup-restore-test       # restore drill (below)
+bin/sgnl-backup-restore-test-all        # all of them, with a summary (monthly, after upgrades)
 bin/sgnl-backup-restore-test-keycloak   # Keycloak: dump -> throwaway Postgres + Keycloak
 bin/sgnl-backup-restore-test-listmonk   # listmonk: dump + uploads -> throwaway Postgres + listmonk
 
