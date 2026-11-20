@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Collabora's WOPI proof key (unique per install): created once on the host
+# at /opt/sgnl/collabora/proof_key, mounted read-only into the container
+# (config/deploy.collabora.yml). Idempotent: an existing key is kept.
+# bin/sgnl-deploy collabora runs it first.
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+ssh "root@$SGNL_HOST" 'set -e; install -d -m 755 /opt/sgnl/collabora
+  if [ ! -s /opt/sgnl/collabora/proof_key ]; then
+    openssl genrsa -traditional -out /opt/sgnl/collabora/proof_key 4096 2>/dev/null
+    chown 1001:1001 /opt/sgnl/collabora/proof_key; chmod 400 /opt/sgnl/collabora/proof_key
+    echo "collabora: generated the WOPI proof key"
+  else
+    echo "collabora: proof key present"
+  fi'

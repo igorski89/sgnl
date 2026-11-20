@@ -19,17 +19,6 @@ case "${KAMAL_SERVICE:-}" in
     # Container runs as uid 1000: world-readable, no secrets in these.
     src=opencloud dest=opencloud dir_mode=755 world_readable=1
     files=(csp.yaml proxy.yaml) ;;
-  sgnl-collabora)
-    # Nothing to upload; make sure the WOPI proof key exists (once).
-    for host in ${KAMAL_HOSTS//,/ }; do
-      ssh "root@$host" 'set -e; install -d -m 755 /opt/sgnl/collabora
-        if [ ! -s /opt/sgnl/collabora/proof_key ]; then
-          openssl genrsa -traditional -out /opt/sgnl/collabora/proof_key 4096 2>/dev/null
-          chown 1001:1001 /opt/sgnl/collabora/proof_key; chmod 400 /opt/sgnl/collabora/proof_key
-          echo "pre-app-boot: generated Collabora WOPI proof key"
-        fi'
-    done
-    exit 0 ;;
   *) exit 0 ;;
 esac
 

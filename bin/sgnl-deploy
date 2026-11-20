@@ -29,6 +29,7 @@ deploy_one() {
   local accs; accs=$(ruby -rkamal -e '
     c = Kamal::Configuration.create_from(config_file: Pathname.new(ARGV[0]), version: "x")
     puts c.raw_config.servers.nil? ? c.accessories.map(&:name).join(" ") : ""' "$cfg" 2>/dev/null) || accs=""
+  [[ $app == collabora ]] && bin/sgnl-collabora-proof-key
   if [[ -n $accs ]]; then
     for acc in $accs; do
       echo "    accessory $acc: reboot (a few seconds down)"
