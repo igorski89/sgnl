@@ -132,6 +132,9 @@ Follow `docs/DEPLOY.md` §1–6b with these differences:
   # same for listmonk: sgnl-listmonk-postgres, user/db listmonk,
   # staging/listmonk/listmonk.dump; then bin/sgnl-listmonk-setup
   ```
+  The fresh database's app user (`keycloak`, `listmonk`) is a normal user
+  owning it; `dbadmin` is the superuser (`docker exec … psql -U dbadmin`,
+  docs/SECURITY.md §2c). Restore as the app user, as above.
   Users, passkeys and clients come back from the dump; don't re-run the
   first-login or invite steps. listmonk's settings, lists and subscribers
   are in its dump too.

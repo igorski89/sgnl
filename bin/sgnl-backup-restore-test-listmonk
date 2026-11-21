@@ -20,8 +20,12 @@ source "$(dirname "$0")/../lib/instance.sh"
 
 HOST=root@$SGNL_HOST
 SNAPSHOT=${1:-latest}
+# The live databases' first-start script (dbadmin + a normal app user):
+# the throwaway one is set up the same way, and the dump is restored as
+# the app user, as docs/RECOVERY.md does.
+INITDB=$(base64 < "$(dirname "$0")/../postgres/initdb-app-user.sh" | tr -d '\n')
 
-ssh "$HOST" "export SNAPSHOT='$SNAPSHOT'; exec bash -s" <<'REMOTE'
+ssh "$HOST" "export SNAPSHOT='$SNAPSHOT' INITDB='$INITDB'; exec bash -s" <<'REMOTE'
 set -euo pipefail
 B=/opt/sgnl/backup
 T=$B/restore-test-listmonk
@@ -49,14 +53,23 @@ echo "    restored: dump $(du -h "$DUMP" | cut -f1)"
 
 echo "==> loading it into a throwaway Postgres ($PGIMAGE)"
 docker network create --internal $NAME >/dev/null
-docker run -d --name $NAME-db --network $NAME --network-alias db -e POSTGRES_USER=listmonk \
-  -e POSTGRES_DB=listmonk -e POSTGRES_PASSWORD=restore-test -v "$DUMP:/dump:ro" "$PGIMAGE" >/dev/null
+mkdir -p "$T" && base64 -d <<<"$INITDB" > "$T/90-app-user.sh" && chmod 755 "$T/90-app-user.sh"
+docker run -d --name $NAME-db --network $NAME --network-alias db -e POSTGRES_USER=dbadmin \
+  -e POSTGRES_DB=listmonk -e SGNL_DB_APP_USER=listmonk -e POSTGRES_PASSWORD=restore-test -v "$DUMP:/dump:ro" \
+  -v "$T/90-app-user.sh:/docker-entrypoint-initdb.d/90-app-user.sh:ro" "$PGIMAGE" >/dev/null
 for i in $(seq 1 30); do
-  docker exec $NAME-db pg_isready -U listmonk -q 2>/dev/null && break
+  docker exec $NAME-db pg_isready -U dbadmin -q 2>/dev/null && break
   [[ $i == 30 ]] && { echo "throwaway Postgres never got ready"; exit 1; }
   sleep 2
 done
-sleep 2 # the image restarts Postgres once after initdb
+# The image runs initdb + the first-start script on a temporary server,
+# then restarts Postgres: wait for that, not just the first "ready".
+for i in $(seq 1 60); do
+  docker logs $NAME-db 2>&1 | grep -q "PostgreSQL init process complete" &&
+    docker exec $NAME-db pg_isready -U dbadmin -q 2>/dev/null && break
+  [[ $i == 60 ]] && { echo "throwaway Postgres never finished its first start"; docker logs --tail 5 $NAME-db; exit 1; }
+  sleep 1
+done
 docker exec $NAME-db pg_restore -U listmonk -d listmonk --clean --if-exists --no-owner /dump
 echo "    pg_restore: ok"
 

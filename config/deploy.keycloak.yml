@@ -81,10 +81,16 @@ accessories:
       memory: 256m
     volumes:
       - "sgnl_keycloak_db18:/var/lib/postgresql"
+    # First start on an empty volume: dbadmin is the bootstrap superuser
+    # (no password, docker exec only), keycloak a normal user owning the
+    # database (postgres/initdb-app-user.sh, docs/SECURITY.md §2c).
+    files:
+      - postgres/initdb-app-user.sh:/docker-entrypoint-initdb.d/90-app-user.sh
     env:
       clear:
         TZ: "<%= ENV.fetch("SGNL_TZ") %>"
-        POSTGRES_USER: "keycloak"
+        POSTGRES_USER: "dbadmin"
         POSTGRES_DB: "keycloak"
+        SGNL_DB_APP_USER: "keycloak"
       secret:
         - POSTGRES_PASSWORD:KEYCLOAK_POSTGRES_PASSWORD

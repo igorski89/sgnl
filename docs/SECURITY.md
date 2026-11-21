@@ -128,6 +128,20 @@ what it would do; add `-- --apply` to do it. ⏳ Not run. Your go.
 - **Hetzner Cloud Firewall:** check the console. If one exists, it needs
   465/993. If none, consider adding one as a second layer (SSH from known
   IPs only, if your IPs are stable enough).
+- **Databases: apps are not superusers** (2026-11-21). The Postgres image
+  makes its first user (`POSTGRES_USER`) the bootstrap superuser, which
+  Postgres won't demote. So that user is `dbadmin` (no password; the
+  image trusts only connections from inside the container, so it is
+  reachable only as `docker exec <container> psql -U dbadmin`), and each
+  app has a normal user owning its database (`keycloak`, `listmonk`).
+  Why: listmonk's SQL segmentation (permission `subscribers:sql_query`)
+  runs typed-in SQL; as a superuser that could call functions like
+  `pg_read_file`. Fresh databases get this from
+  `postgres/initdb-app-user.sh`; the live ones were switched by renaming
+  the old superuser to `dbadmin` and handing every object to a new app
+  user with the same password hash. An app upgrade that wants an extension
+  only a superuser may create will fail with a clear error: create it
+  once as `dbadmin`.
 - **Deploys run as root over SSH.** Acceptable for one operator. A
   non-root `deploy` user in the `docker` group is root-equivalent anyway,
   so it would mostly add audit separation.
