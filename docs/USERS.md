@@ -104,9 +104,11 @@ groups. Commit `stalwart/plan.ndjson`. Tell her on another channel
 
 `finish-invite` also adds her to the company's password vault
 (`bin/sgnl-vault-sync`, see "Shared passwords"): Vaultwarden emails her
-an invitation to anna@example.com. Once she has accepted it (step 7 of
-her side), run the sync once more, which confirms her; until then she
-sees none of the company's passwords:
+an invitation to anna@example.com, separate from the Keycloak one and
+valid for 5 days. Tell her about it explicitly (it's the step people
+miss). Once she has accepted it (step 7 of her side), run the sync once
+more, which confirms her; until then she sees none of the company's
+passwords:
 
 ```bash
 bin/sgnl-vault-sync
@@ -119,7 +121,9 @@ also be handed to their own AI assistant (it ends with a "For your AI
 assistant" section: facts, known quirks, rules, when to escalate). Bob's
 (updated 2026-10-19 for Keycloak) is the model:
 `onboarding/bob-onboarding.md` (gitignored). Copy it, replace
-name/rights/personal address, then render:
+name/rights/personal address, bring its steps in line with "The
+person's side" below (the vault invitation, step 7, is the one people
+miss), then render:
 
 ```bash
 cd onboarding
@@ -147,9 +151,18 @@ weasyprint <user>.html <user>-onboarding.pdf && rm <user>.html
    only they know and nobody can recover. Then the official Bitwarden
    apps/extensions: "Self-hosted", server URL
    `https://vault.sgnl.example.com`, log in with single sign-on.
-7. In the new mailbox: the email "Join <company>" from the password
-   vault → accept (the link is valid 5 days), then tell the admin, who
-   confirms it. The company's shared passwords then appear in the vault.
+7. **A second, separate invitation, for the company's shared
+   passwords.** It's easy to miss: it comes from the password vault, not
+   from the login system, and goes to the **new** company mailbox (not
+   the personal one). After step 6, in the webmail: the email "Join
+   <company>" → "Join Organization" → log in with single sign-on as in
+   step 6. Then tell the admin "vault joined": they confirm it
+   (`bin/sgnl-vault-sync`), and only then do the company's shared
+   passwords appear (until then the vault shows only their own). The
+   link expires after **5 days**; if it did (or the email never came),
+   the admin resends it: Admin Console → Members → ⋮ → "Resend
+   invitation". (Goal: no separate invitation, see the TODO; until then
+   this step stays.)
 
 Pitfalls:
 - **Password managers fill in an old password**; 3 wrong ones in 2 min
