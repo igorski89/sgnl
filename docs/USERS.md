@@ -258,8 +258,10 @@ collections they see is config, not clicks:
 ## Landing page (home.sgnl.example.com)
 
 Dashy, configured only through git (UI editing is off): SGNL's tiles in
-`dashy/conf.yml`, the instance's own sections in
-`instance/dashy/extra-sections.yml` (e.g. Stripe), logging in through Keycloak (client `dashy`). Each tile/section has
+`dashy/conf.yml`, the instance's own tiles in
+`instance/dashy/extra-apps.yml` (added to "Apps", e.g. Stripe) and
+`instance/dashy/extra-sections.yml` (own sections), logging in through
+Keycloak (client `dashy`). Each tile/section has
 `displayData.showForGroups: [<group>]`; a new app = a new item, then
 `bin/sgnl-deploy dashy`.
 

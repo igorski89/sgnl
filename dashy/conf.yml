@@ -85,6 +85,7 @@ sections:
         statusCheckUrl: https://monitor.{{SGNL_APPS_DOMAIN}}/api/health
         displayData:
           showForGroups: [sgnl_users]
+      # @instance-apps: the instance's own app tiles go here (instance/dashy/extra-apps.yml)
 
   - name: Account & security
     icon: fas fa-user-shield

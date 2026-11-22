@@ -1,3 +1,4 @@
 <%# Rendered by Kamal when it uploads the accessory's file (config/deploy.dashy.yml):
-    the SGNL tile template (dashy/conf.yml, {{SGNL_*}} placeholders from instance/sgnl.env)
-    plus the instance's own sections ($SGNL_INSTANCE_DIR/dashy/extra-sections.yml, optional). %><%= fill = ->(t) { t.gsub(/\{\{(SGNL_[A-Z0-9_]+)\}\}/) { ENV.fetch($1) } }; extra = File.join(ENV.fetch("SGNL_INSTANCE_DIR", "instance"), "dashy", "extra-sections.yml"); fill.(File.read("dashy/conf.yml")) + (File.exist?(extra) ? fill.(File.read(extra)) : "") %>
+    the SGNL tile template (dashy/conf.yml, {{SGNL_*}} placeholders from instance/sgnl.env),
+    the instance's own app tiles at the end of "Apps" ($SGNL_INSTANCE_DIR/dashy/extra-apps.yml, optional)
+    and its own sections at the end ($SGNL_INSTANCE_DIR/dashy/extra-sections.yml, optional). %><%= fill = ->(t) { t.gsub(/\{\{(SGNL_[A-Z0-9_]+)\}\}/) { ENV.fetch($1) } }; dir = File.join(ENV.fetch("SGNL_INSTANCE_DIR", "instance"), "dashy"); read = ->(f) { p = File.join(dir, f); File.exist?(p) ? fill.(File.read(p)) : "" }; fill.(File.read("dashy/conf.yml")).sub(/^ *# @instance-apps:.*\n/) { read.("extra-apps.yml") } + read.("extra-sections.yml") %>
