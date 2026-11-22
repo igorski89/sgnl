@@ -51,6 +51,7 @@ Inbound and outbound both go through AWS SES in eu-central-1.
 | --- | --- | --- | --- |
 | MX | `@` | `./tf output mx_target` (priority `10`), an `inbound-smtp.<region>.amazonaws.com` hostname | Inbound mail to SES, which relays into Stalwart via Lambda. **Replaces** the three Cloudflare MX records |
 | TXT | `@` | `v=spf1 include:amazonses.com ~all` | Authorizes SES as the outbound sender. **Replaces** the Cloudflare SPF record (only one SPF record is allowed) |
+| TXT | `@` | `stripe-verification=<code from Stripe>` | Only with Stripe SSO (USERS.md): proves the email domain to Stripe. **Keep it**: Stripe re-checks, and without it SSO stops. Added 2026-11-22 via the Cloudflare API |
 | TXT | `_dmarc` | `v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com` | `p=quarantine` since 2026-10-09 (forgeries go to spam). Started at `p=none` on 2026-10-08; tightened early after checking that every sender is SES with DKIM: Stalwart, Authelia (auth@), backups (backup@), Gmail send-as. cotenant sends no mail. Undo: back to `p=none` |
 | CNAME ×3 | `<token>._domainkey` | `<token>.dkim.amazonses.com` | Easy DKIM, also verifies the domain. **Already exists**, don't touch |
 | MX | `mail` | `10 feedback-smtp.eu-central-1.amazonses.com` | Custom MAIL FROM (bounces/complaints). **Already exists**, don't touch |

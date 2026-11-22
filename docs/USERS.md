@@ -114,6 +114,13 @@ passwords:
 bin/sgnl-vault-sync
 ```
 
+**SaaS with SSO (Stripe):** if she needs one, invite her there with her
+company address (anna@example.com) and pick her role in that service:
+Stripe → Settings → Team and security → Team. Roles stay in Stripe;
+she then signs in with "Sign in with SSO" (Keycloak, client
+`https://dashboard.stripe.com/saml/metadata` in keycloak/realm.yaml),
+or from the landing page tile. Stripe's mobile app has no SSO.
+
 ### Personal guide (PDF)
 
 Each person gets a personalized guide: no secrets in it, written so it can
@@ -250,8 +257,9 @@ collections they see is config, not clicks:
 
 ## Landing page (home.sgnl.example.com)
 
-Dashy, configured only through `instance/dashy/conf.yml` in git (UI editing is
-off), logging in through Keycloak (client `dashy`). Each tile/section has
+Dashy, configured only through git (UI editing is off): SGNL's tiles in
+`dashy/conf.yml`, the instance's own sections in
+`instance/dashy/extra-sections.yml` (e.g. Stripe), logging in through Keycloak (client `dashy`). Each tile/section has
 `displayData.showForGroups: [<group>]`; a new app = a new item, then
 `bin/sgnl-deploy dashy`.
 
@@ -327,6 +335,9 @@ script prints this list.
   their repos are moved.
 - **Vaultwarden:** remove them from shared collections. Their own vault is
   encrypted with their master password.
+- **Stripe (and other SAML SaaS):** Keycloak doesn't tell Stripe, and a
+  Stripe session lasts up to 12 h after the last SSO login. Remove them
+  in Stripe → Settings → Team and security → Team, the same day.
 
 ## Break-glass (admin)
 
