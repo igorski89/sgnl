@@ -568,6 +568,37 @@ clients:
     serviceAccountsEnabled: true
     defaultClientScopes: [basic, roles]
 
+  # Stripe Dashboard login over SAML (docs.stripe.com/get-started/account/sso/other).
+  # Keycloak only confirms who someone is (NameID = their email); roles
+  # stay in Stripe ("Stripe Dashboard" role assignment), and Stripe's own
+  # team list decides who gets in. Stripe needs the email domain verified
+  # (DNS TXT stripe-verification=… on the apex) and, in its SSO form:
+  # issuer https://id.<apps domain>/realms/<realm>, URL …/protocol/saml,
+  # and the realm's RS256 certificate (…/protocol/saml/descriptor).
+  # Harmless if unused: Keycloak only answers requests Stripe sends.
+  - clientId: "https://dashboard.stripe.com/saml/metadata"
+    name: "Stripe (dashboard.stripe.com)"
+    protocol: saml
+    enabled: true
+    frontchannelLogout: false
+    redirectUris: ["https://dashboard.stripe.com/login/saml/consume"]
+    attributes:
+      saml_assertion_consumer_url_post: "https://dashboard.stripe.com/login/saml/consume"
+      saml.force.post.binding: "true"
+      saml.server.signature: "true"
+      saml.assertion.signature: "true"
+      saml.signature.algorithm: "RSA_SHA256"
+      saml_signature_canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#"
+      saml.client.signature: "false"
+      saml.encrypt: "false"
+      saml.authnstatement: "true"
+      saml_name_id_format: "email"
+      saml_force_name_id_format: "true"
+    defaultClientScopes: []
+    optionalClientScopes: []
+    authenticationFlowBindingOverrides:
+      browser: sgnl-apps
+
 users:
   - username: service-account-sgnl-agent
     enabled: true
