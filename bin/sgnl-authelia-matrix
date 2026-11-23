@@ -24,7 +24,7 @@ usage() { sed -n '2,16p' "$0"; exit 1; }
 mode=${1:-}; app=${2:-}
 [[ $mode == status ]] || [[ " $APPS " == *" $app "* ]] || usage
 c="sgnl-matrix-$app"
-cmd=() secret_var="" files=""
+cmd=() secret_var="" file_target=""
 
 # Per app: label (host <label>.<apps>), port, image, data dir, secret
 # variable, environment (stdout), optional setup after start.
@@ -43,10 +43,10 @@ case $app in
     label=listmonk-next port=9000 data=/listmonk/data health=/health
     image=$(ssh "$HOST" "docker inspect --format '{{.Config.Image}}' \$(docker ps -qf label=service=sgnl-listmonk -f label=role=web | head -1)")
     secret_var=LISTMONK_ADMIN_PASSWORD
-    cmd=(sh -c "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && exec ./listmonk --config ''") ;;
+    file_target=/matrix-run.sh cmd=(sh /matrix-run.sh) ;;
   dashy)
     label=home-next port=8080 image=lissy93/dashy:4.9.19 data=/app/user-data/data health=/
-    files=conf.yml ;;
+    file_target=/app/user-data/conf.yml ;;
 esac
 url="https://${label:-}.$SGNL_APPS_DOMAIN"
 
@@ -160,7 +160,11 @@ print("COMMIT;")' "$url" "$ISSUER" "$SGNL_DOMAIN" |
 
 # Dashy: a public client; minimal page with the live auth block.
 env_dashy() { echo "NODE_ENV=production"; }
-file_dashy_conf() { cat <<EOF
+file_listmonk() { cat <<'EOF'
+./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && exec ./listmonk --config ''
+EOF
+}
+file_dashy() { cat <<EOF
 pageInfo:
   title: SGNL (Authelia test)
 appConfig:
@@ -184,16 +188,16 @@ up() {
   bin/sgnl-dns add "$label" "Authelia login matrix (test copy of $app)"
   local env; env=$("env_$app")
   local extra_mount="" conf=""
-  if [[ $files == conf.yml ]]; then
-    conf=$(file_dashy_conf | base64 | tr -d '\n')
-    extra_mount="-v /opt/sgnl/matrix/$app/conf.yml:/app/user-data/conf.yml:ro"
+  if [[ -n $file_target ]]; then
+    conf=$("file_$app" | base64 | tr -d '\n')
+    extra_mount="-v /opt/sgnl/matrix/$app/file:$file_target:ro"
   fi
-  local qcmd=""; [[ ${#cmd[@]} -gt 0 ]] && qcmd=$(printf '%q ' "${cmd[@]}")
+  local qcmd="${cmd[*]:-}"   # plain words only (no quotes): passed through two shells
   # stdin: line 1 the secret (may be empty), then the env lines.
   { [[ -n $secret_var ]] && bin/sgnl-secret "authelia-test-$app-client-secret"; echo; printf '%s\n' "$env"; } |
     ssh "$HOST" "bash -c 'set -e
       read -r S; E=\$(cat)
-      ${conf:+install -d /opt/sgnl/matrix/$app; echo $conf | base64 -d > /opt/sgnl/matrix/$app/conf.yml}
+      ${conf:+install -d /opt/sgnl/matrix/$app; echo $conf | base64 -d > /opt/sgnl/matrix/$app/file; chmod 644 /opt/sgnl/matrix/$app/file}
       docker rm -f $c >/dev/null 2>&1 || true
       docker run -d --name $c --network kamal --restart unless-stopped --label sgnl.matrix=1 \
         -v ${c}_data:$data $extra_mount \

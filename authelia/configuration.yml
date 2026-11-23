@@ -70,6 +70,12 @@ identity_providers:
   oidc:
     jwks:
       - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
+    # Browser apps (Dashy) call the token endpoint from their own origin;
+    # Keycloak allows that per client ("web origins"). Here: the origins of
+    # each client's redirect URIs.
+    cors:
+      endpoints: ['authorization', 'token', 'revocation', 'introspection', 'userinfo']
+      allowed_origins_from_client_redirect_uris: true
     claims_policies:
       # Apps that read groups etc. from the ID token (Grafana's role,
       # Forgejo, Dashy). Keycloak puts them there for every client.
