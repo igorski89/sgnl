@@ -15,6 +15,10 @@ case "${KAMAL_SERVICE:-}" in
   sgnl-stalwart)
     src=stalwart dest=stalwart dir_mode=755 world_readable=1
     files=(config.json) ;;
+  sgnl-authelia)
+    # Runs as root; no secrets in the file (they're environment variables).
+    src=authelia dest=authelia dir_mode=755 world_readable=1
+    files=(configuration.yml) ;;
   sgnl-opencloud)
     # Container runs as uid 1000: world-readable, no secrets in these.
     src=opencloud dest=opencloud dir_mode=755 world_readable=1

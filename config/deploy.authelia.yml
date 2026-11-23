@@ -1,0 +1,52 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# Authelia, our fork - TEST deployment for the login matrix
+# (instance/docs/PLAN-authelia-test.md). Keycloak stays the live login;
+# only test users and throwaway app copies log in here.
+#
+# One container, SQLite in a volume. Only the issuer prefix
+# /realms/<realm> is routed here (Authelia also answers on / with another
+# issuer). authelia/configuration.yml is uploaded to /opt/sgnl/authelia by
+# .kamal/hooks/pre-app-boot. Not in the backups (test data).
+#
+#   kamal setup -c config/deploy.authelia.yml
+#   undo: kamal remove -c config/deploy.authelia.yml, then delete volume
+#         sgnl_authelia_data and the authelia-* vault items
+service: sgnl-authelia
+image: sgnl-authelia
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-authelia
+proxy:
+  ssl: true
+  host: auth.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  path_prefix: /realms/<%= ENV.fetch("SGNL_REALM") %>
+  strip_path_prefix: false
+  app_port: 9091
+  healthcheck:
+    path: /realms/<%= ENV.fetch("SGNL_REALM") %>/api/health
+registry:
+  server: localhost:5555
+retain_containers: 2
+builder:
+  arch: amd64
+  dockerfile: docker/authelia/Dockerfile
+  context: docker/authelia
+volumes:
+  - "sgnl_authelia_data:/data"
+  - "/opt/sgnl/authelia/configuration.yml:/config/configuration.yml:ro"
+env:
+  secret:
+    - AUTHELIA_SESSION_SECRET
+    - AUTHELIA_STORAGE_ENCRYPTION_KEY
+    - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
+    - AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET
+    # Used inside the config through its template filter (lists can't take
+    # AUTHELIA_* variables).
+    - SGNL_AUTHELIA_OIDC_JWK_B64
+    - SGNL_AUTHELIA_AGENT_CLIENT_SECRET
+  clear:
+    X_AUTHELIA_CONFIG_FILTERS: template
+    TZ: UTC

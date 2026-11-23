@@ -1,0 +1,91 @@
+# Authelia (our fork) - TEST deployment for the login matrix
+# (instance/docs/PLAN-authelia-test.md): auth.{{SGNL_APPS_DOMAIN}}, test
+# users only, nothing live logs in here. Keycloak stays the live login.
+#
+# Instance values (SGNL_* placeholders) are filled by bin/sgnl-render
+# before upload (.kamal/hooks/pre-app-boot). The env "..." calls are
+# Authelia's own template filter (X_AUTHELIA_CONFIG_FILTERS=template; it
+# also parses comments, so no braces in comments), for the secrets that live
+# inside lists; they come from the container's environment (vault, via
+# .kamal/secrets), never from this file. Other secrets are AUTHELIA_*
+# environment variables (config/deploy.authelia.yml).
+---
+theme: 'auto'
+
+server:
+  # The issuer keeps Keycloak's path (/realms/<realm>); only this prefix is
+  # routed here (kamal-proxy path_prefix), because Authelia also answers
+  # on / with another issuer.
+  address: 'tcp://:9091/realms/{{SGNL_REALM}}'
+
+log:
+  level: 'info'
+
+totp:
+  disable: true
+
+webauthn:
+  display_name: '{{SGNL_ORG_NAME}}'
+
+authentication_backend:
+  database:
+    search:
+      email: true
+  password_change:
+    disable: false
+  password_reset:
+    disable: false
+
+password_policy:
+  standard:
+    enabled: true
+    min_length: 12
+
+# No forward-auth here: OIDC clients carry their own policy. Authelia
+# wants a non-deny default when there are no rules.
+access_control:
+  default_policy: 'two_factor'
+
+session:
+  cookies:
+    - domain: 'auth.{{SGNL_APPS_DOMAIN}}'
+      authelia_url: 'https://auth.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}'
+      inactivity: '8h'
+      expiration: '7d'
+
+regulation:
+  max_retries: 3
+  find_time: '2m'
+  ban_time: '30m'
+
+storage:
+  local:
+    path: '/data/db.sqlite3'
+
+# Test: messages (reset links, notifications) go to a file, no mail.
+notifier:
+  filesystem:
+    filename: '/data/notifications.txt'
+
+identity_providers:
+  oidc:
+    jwks:
+      - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
+    claims_policies:
+      # Apps that read groups etc. from the ID token (Forgejo, Dashy).
+      id_token_groups:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+    clients:
+      # The agent (replaces bin/sgnl-kc's Keycloak service account):
+      # client credentials only, for the admin API.
+      - client_id: 'sgnl-agent'
+        client_name: 'SGNL agent (automation)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_AGENT_CLIENT_SECRET" }}'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read', 'authelia.admin.write']
+        audience: ['https://auth.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
+...
