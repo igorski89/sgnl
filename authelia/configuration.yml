@@ -187,5 +187,8 @@ identity_providers:
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'two_factor'
-        consent_mode: 'implicit'
+        # offline_access (stay logged in) always asks for consent in
+        # Authelia; Keycloak doesn't. Pre-configured: asked once, remembered.
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
 ...

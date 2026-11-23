@@ -48,6 +48,14 @@ def shot(page, name):
 def authelia_login(page, user):
     """On Authelia's portal: password (if asked), then passkey (register once)."""
     page.wait_for_load_state("load")
+    if "/consent/" in page.url:
+        page.wait_for_timeout(1000)
+        rem = page.get_by_role("checkbox")
+        if rem.count() and not rem.first.is_checked():
+            rem.first.check()
+        page.get_by_role("button", name=re.compile("accept", re.I)).click()
+        page.wait_for_timeout(3000)
+        return "ok"
     u = page.locator("#username-textfield")
     if u.count() and u.is_visible():
         if u.is_enabled():
@@ -198,6 +206,26 @@ def check(app, page, user):
         ok = res.get("status") == 200 and res.get("name") == user and want in (res.get("roles") or [])
         role = {ADMIN_ROLE: "Admin", USER_ROLE: "User"}
         return ok, f"graph={res.get('status')} name={res.get('name')} roles={[role.get(r, r[:8]) for r in res.get('roles') or []]} {res.get('err', '')}{res.get('keys', '')}"
+    if app == "bulwark":
+        page.goto(URL("inbox-next") + "/")
+        for _ in range(6):
+            page.wait_for_load_state("load")
+            if page.url.startswith(f"https://auth.{APPS_DOMAIN}"):
+                if authelia_login(page, user) == "registered":
+                    page.goto(URL("inbox-next") + "/")
+                continue
+            btn = page.get_by_role("button", name=re.compile("sign in|log in|continue", re.I))
+            if "/login" in page.url and btn.count():
+                btn.first.click()
+                page.wait_for_timeout(3000)
+                continue
+            break
+        page.wait_for_timeout(6000)
+        txt = page.inner_text("body")[:3000]
+        # The mailbox opened = Bulwark's JMAP session with Stalwart works,
+        # i.e. Stalwart accepted Authelia's access token (via userinfo).
+        ok = page.url.startswith(URL("inbox-next")) and re.search(r"\bInbox\b", txt) is not None
+        return ok, f"url={page.url.split(APPS_DOMAIN)[-1][:50]} inbox_shown={ok} {'' if ok else txt[:150]!r}"
     return False, "unknown app"
 
 
