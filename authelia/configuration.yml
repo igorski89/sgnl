@@ -71,7 +71,8 @@ identity_providers:
     jwks:
       - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
     claims_policies:
-      # Apps that read groups etc. from the ID token (Forgejo, Dashy).
+      # Apps that read groups etc. from the ID token (Grafana's role,
+      # Forgejo, Dashy). Keycloak puts them there for every client.
       id_token_groups:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
     clients:
@@ -100,4 +101,9 @@ identity_providers:
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'two_factor'
+        # Grafana reads the role from the ID token's groups (Keycloak puts
+        # them there; Authelia only with a claims policy). No consent
+        # screen, as on Keycloak.
+        claims_policy: 'id_token_groups'
+        consent_mode: 'implicit'
 ...
