@@ -8,7 +8,7 @@
 # Build stages run natively on the build machine ($BUILDPLATFORM); only the
 # Go binary is cross-compiled (CGO_ENABLED=0, pure-Go SQLite driver).
 
-ARG LISTMONK_REF=v7.0.0-beta.2-sqlite.3
+ARG LISTMONK_REF=v7.0.0-beta.2-sqlite.4
 # The version the binary reports. It decides the migration behaviour: a
 # "-beta"/"-rc" pre-release runs pending migrations on every boot without
 # recording them (upstream's non-final build path). Keep it equal to the tag.

@@ -19,6 +19,7 @@ Sets:
   smtp             one server: SES (SGNL_SMTP_HOST:587, STARTTLS, the
                    ses-smtp-* credentials), header X-SES-CONFIGURATION-SET:
                    <prefix>-campaigns (aws/campaigns.tf)
+  security.signed_links  on (subscriber links signed; fork sqlite.4+)
   bounce.*         processing on, SES webhook on and limited to our SNS topic
                    (Terraform output campaigns_events_topic_arn); hard bounce
                    or complaint -> blocklist, 2 soft bounces -> nothing
@@ -104,6 +105,8 @@ UPDATE settings SET value = 'true', updated_at = {NOW}
 UPDATE settings SET value = json_patch(value, {q(json.dumps({"enabled": True, "topic_arns": [topic_arn()]}))}), updated_at = {NOW}
   WHERE key = 'bounce.ses';
 UPDATE settings SET value = json({q(json.dumps(bounce_actions))}), updated_at = {NOW} WHERE key = 'bounce.actions';
+UPDATE settings SET value = json_patch(value, '{{"enabled": true}}'), updated_at = {NOW}
+  WHERE key = 'security.signed_links';
 UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = {NOW}
   WHERE username = {q(ADMIN)} AND email IS NOT {q(f"{ADMIN}@{DOMAIN}")};
 SELECT 'root_url ' || (SELECT value ->> '$' FROM settings WHERE key = 'app.root_url');
@@ -114,6 +117,7 @@ SELECT 'smtp ' || (SELECT group_concat((e.value ->> '$.host') || ':' || (e.value
 SELECT 'bounces ' || (SELECT group_concat(key || '=' || value, ' ') FROM (SELECT key, value FROM settings
   WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled') ORDER BY key))
   || ' ses=' || (SELECT (value ->> '$.enabled') || ' topics=' || json_array_length(value, '$.topic_arns') FROM settings WHERE key = 'bounce.ses');
+SELECT 'signed_links ' || (SELECT value ->> '$.enabled' FROM settings WHERE key = 'security.signed_links');
 SELECT 'admin ' || username || ' <' || email || '>' FROM users WHERE username = {q(ADMIN)};
 COMMIT;
 """
