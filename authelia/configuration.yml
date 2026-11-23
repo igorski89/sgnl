@@ -13,9 +13,8 @@
 theme: 'auto'
 
 server:
-  # The issuer keeps Keycloak's path (/realms/<realm>); only this prefix is
-  # routed here (kamal-proxy path_prefix), because Authelia also answers
-  # on / with another issuer.
+  # The issuer keeps Keycloak's path (/realms/<realm>). Authelia also
+  # answers on / with another issuer (see config/deploy.authelia.yml).
   address: 'tcp://:9091/realms/{{SGNL_REALM}}'
 
 log:
