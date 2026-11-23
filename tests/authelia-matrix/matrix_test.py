@@ -171,6 +171,33 @@ def check(app, page, user):
         except Exception:
             pass
         return ok, f"page_ok={ok} admin_seen={isadm} console={logs[-3:] if not ok else ''}"
+    if app == "opencloud":
+        page.goto(URL("drive-next") + "/")
+        for _ in range(5):
+            page.wait_for_load_state("load")
+            if page.url.startswith(f"https://auth.{APPS_DOMAIN}"):
+                if authelia_login(page, user) == "registered":
+                    page.goto(URL("drive-next") + "/")
+            else:
+                page.wait_for_timeout(3000)
+                if not page.url.startswith(f"https://auth.{APPS_DOMAIN}"):
+                    break
+        page.wait_for_timeout(5000)
+        # The web app keeps its OIDC user (access token) in session/local storage.
+        res = page.evaluate("""async () => {
+          const all = {...sessionStorage, ...localStorage};
+          const k = Object.keys(all).find(k => k.includes('oidc.user') || k.includes('oAuth.user'));
+          if (!k) return {err: 'no token in storage', keys: Object.keys(all).slice(0, 10)};
+          const tok = JSON.parse(all[k]).access_token;
+          const r = await fetch('/graph/v1.0/me?$expand=appRoleAssignments', {headers: {Authorization: 'Bearer ' + tok}});
+          const j = await r.json().catch(() => ({}));
+          return {status: r.status, name: j.onPremisesSamAccountName, roles: (j.appRoleAssignments || []).map(a => a.appRoleId)};
+        }""")
+        ADMIN_ROLE, USER_ROLE = "71881883-1768-46bd-a24d-a356a2afdf7f", "d7beeea8-8ff4-406b-8fb6-ab2dd81e6b11"
+        want = ADMIN_ROLE if admin else USER_ROLE
+        ok = res.get("status") == 200 and res.get("name") == user and want in (res.get("roles") or [])
+        role = {ADMIN_ROLE: "Admin", USER_ROLE: "User"}
+        return ok, f"graph={res.get('status')} name={res.get('name')} roles={[role.get(r, r[:8]) for r in res.get('roles') or []]} {res.get('err', '')}{res.get('keys', '')}"
     return False, "unknown app"
 
 

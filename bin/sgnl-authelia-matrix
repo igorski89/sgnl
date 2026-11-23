@@ -52,7 +52,7 @@ case $app in
     label=drive-next port=9200 image=$(base_image opencloud) data=/var/lib/opencloud health=/status.php
     extra_vols="-v ${c}_config:/etc/opencloud"
     entry=/bin/sh cmd=(/matrix-run.sh)
-    file_target="run:/matrix-run.sh proxy:/etc/opencloud/proxy.yaml" ;;
+    file_target="run:/matrix-run.sh proxy:/etc/opencloud/proxy.yaml csp:/etc/opencloud/csp.yaml" ;;
 esac
 url="https://${label:-}.$SGNL_APPS_DOMAIN"
 
@@ -211,6 +211,7 @@ PROXY_AUTOPROVISION_CLAIM_GROUPS=groups
 PROXY_ROLE_ASSIGNMENT_DRIVER=oidc
 GRAPH_ASSIGN_DEFAULT_USER_ROLE=false
 PROXY_CONFIG_FILE=/etc/opencloud/proxy.yaml
+PROXY_CSP_CONFIG_FILE_LOCATION=/etc/opencloud/csp.yaml
 WEB_OIDC_CLIENT_ID=opencloud
 WEB_OIDC_SCOPE=openid profile email groups
 WEBFINGER_WEB_OIDC_CLIENT_ID=opencloud
@@ -219,6 +220,8 @@ EOF
 }
 file_opencloud_run() { echo 'opencloud init --insecure no >/dev/null 2>&1 || true; exec opencloud server'; }
 file_opencloud_proxy() { cat opencloud/proxy.yaml; }
+# The live CSP allows the live login host; the copy needs the test one.
+file_opencloud_csp() { bin/sgnl-render opencloud/csp.yaml | sed "s#id\.$SGNL_APPS_DOMAIN#auth.$SGNL_APPS_DOMAIN#g"; }
 
 up() {
   bin/sgnl-dns add "$label" "Authelia login matrix (test copy of $app)"
