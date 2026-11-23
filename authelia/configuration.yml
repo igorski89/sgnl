@@ -158,4 +158,22 @@ identity_providers:
         authorization_policy: 'two_factor'
         claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
+      - client_id: 'opencloud'
+        client_name: 'OpenCloud web (test copy)'
+        public: true
+        redirect_uris:
+          - 'https://drive-next.{{SGNL_APPS_DOMAIN}}/'
+          - 'https://drive-next.{{SGNL_APPS_DOMAIN}}/oidc-callback.html'
+          - 'https://drive-next.{{SGNL_APPS_DOMAIN}}/oidc-silent-redirect.html'
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        # OpenCloud verifies access tokens itself (JWT, as with Keycloak).
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'two_factor'
+        claims_policy: 'id_token_groups'
+        consent_mode: 'implicit'
 ...

@@ -18,13 +18,14 @@ source "$(dirname "$0")/../lib/instance.sh"
 cd "$(dirname "$0")/.."
 HOST=root@$SGNL_HOST
 ISSUER="https://auth.$SGNL_APPS_DOMAIN/realms/$SGNL_REALM"
-APPS="grafana vaultwarden forgejo listmonk dashy"
+APPS="grafana vaultwarden forgejo listmonk dashy opencloud"
 
 usage() { sed -n '2,16p' "$0"; exit 1; }
 mode=${1:-}; app=${2:-}
 [[ $mode == status ]] || [[ " $APPS " == *" $app "* ]] || usage
 c="sgnl-matrix-$app"
-cmd=() secret_var="" file_target=""
+cmd=() secret_var="" file_target="" entry="" extra_vols=""
+# file_target: "name:/path ..." -> file_<app>_<name> is mounted at /path.
 
 # Per app: label (host <label>.<apps>), port, image, data dir, secret
 # variable, environment (stdout), optional setup after start.
@@ -43,10 +44,15 @@ case $app in
     label=listmonk-next port=9000 data=/listmonk/data health=/health
     image=$(ssh "$HOST" "docker inspect --format '{{.Config.Image}}' \$(docker ps -qf label=service=sgnl-listmonk -f label=role=web | head -1)")
     secret_var=LISTMONK_ADMIN_PASSWORD
-    file_target=/matrix-run.sh cmd=(sh /matrix-run.sh) ;;
+    file_target=run:/matrix-run.sh cmd=(sh /matrix-run.sh) ;;
   dashy)
     label=home-next port=8080 image=lissy93/dashy:4.9.19 data=/app/user-data/data health=/
-    file_target=/app/user-data/conf.yml ;;
+    file_target=conf:/app/user-data/conf.yml ;;
+  opencloud)
+    label=drive-next port=9200 image=$(base_image opencloud) data=/var/lib/opencloud health=/status.php
+    extra_vols="-v ${c}_config:/etc/opencloud"
+    entry=/bin/sh cmd=(/matrix-run.sh)
+    file_target="run:/matrix-run.sh proxy:/etc/opencloud/proxy.yaml" ;;
 esac
 url="https://${label:-}.$SGNL_APPS_DOMAIN"
 
@@ -160,11 +166,11 @@ print("COMMIT;")' "$url" "$ISSUER" "$SGNL_DOMAIN" |
 
 # Dashy: a public client; minimal page with the live auth block.
 env_dashy() { echo "NODE_ENV=production"; }
-file_listmonk() { cat <<'EOF'
+file_listmonk_run() { cat <<'EOF'
 ./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && exec ./listmonk --config ''
 EOF
 }
-file_dashy() { cat <<EOF
+file_dashy_conf() { cat <<EOF
 pageInfo:
   title: SGNL (Authelia test)
 appConfig:
@@ -184,23 +190,55 @@ sections:
 EOF
 }
 
+# OpenCloud: as config/deploy.opencloud.yml (web client only, no office,
+# no mail), pointed at the test issuer; init on first start, as live.
+env_opencloud() { cat <<EOF
+OC_URL=$url
+OC_LOG_LEVEL=info
+PROXY_TLS=false
+OC_INSECURE=false
+PROXY_ENABLE_BASIC_AUTH=false
+IDM_CREATE_DEMO_USERS=false
+OC_OIDC_ISSUER=$ISSUER
+OC_EXCLUDE_RUN_SERVICES=idp
+PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD=jwt
+PROXY_OIDC_REWRITE_WELLKNOWN=true
+PROXY_AUTOPROVISION_ACCOUNTS=true
+PROXY_AUTOPROVISION_CLAIM_USERNAME=preferred_username
+PROXY_AUTOPROVISION_CLAIM_EMAIL=email
+PROXY_AUTOPROVISION_CLAIM_DISPLAYNAME=name
+PROXY_AUTOPROVISION_CLAIM_GROUPS=groups
+PROXY_ROLE_ASSIGNMENT_DRIVER=oidc
+GRAPH_ASSIGN_DEFAULT_USER_ROLE=false
+PROXY_CONFIG_FILE=/etc/opencloud/proxy.yaml
+WEB_OIDC_CLIENT_ID=opencloud
+WEB_OIDC_SCOPE=openid profile email groups
+WEBFINGER_WEB_OIDC_CLIENT_ID=opencloud
+WEBFINGER_WEB_OIDC_CLIENT_SCOPES=openid profile email groups
+EOF
+}
+file_opencloud_run() { echo 'opencloud init --insecure no >/dev/null 2>&1 || true; exec opencloud server'; }
+file_opencloud_proxy() { cat opencloud/proxy.yaml; }
+
 up() {
   bin/sgnl-dns add "$label" "Authelia login matrix (test copy of $app)"
   local env; env=$("env_$app")
   local extra_mount="" conf=""
-  if [[ -n $file_target ]]; then
-    conf=$("file_$app" | base64 | tr -d '\n')
-    extra_mount="-v /opt/sgnl/matrix/$app/file:$file_target:ro"
-  fi
+  local ft n t
+  for ft in $file_target; do
+    n=${ft%%:*} t=${ft#*:}
+    conf+="install -d /opt/sgnl/matrix/$app; echo $("file_${app}_$n" | base64 | tr -d '\n') | base64 -d > /opt/sgnl/matrix/$app/$n; chmod 644 /opt/sgnl/matrix/$app/$n; "
+    extra_mount+=" -v /opt/sgnl/matrix/$app/$n:$t:ro"
+  done
   local qcmd="${cmd[*]:-}"   # plain words only (no quotes): passed through two shells
   # stdin: line 1 the secret (may be empty), then the env lines.
   { [[ -n $secret_var ]] && bin/sgnl-secret "authelia-test-$app-client-secret"; echo; printf '%s\n' "$env"; } |
     ssh "$HOST" "bash -c 'set -e
       read -r S; E=\$(cat)
-      ${conf:+install -d /opt/sgnl/matrix/$app; echo $conf | base64 -d > /opt/sgnl/matrix/$app/file; chmod 644 /opt/sgnl/matrix/$app/file}
+      $conf
       docker rm -f $c >/dev/null 2>&1 || true
       docker run -d --name $c --network kamal --restart unless-stopped --label sgnl.matrix=1 \
-        -v ${c}_data:$data $extra_mount \
+        -v ${c}_data:$data $extra_vols $extra_mount ${entry:+--entrypoint $entry} \
         --env-file <(printf \"%s\n\" \"\$E\"; [ -n \"$secret_var\" ] && printf \"%s=%s\n\" $secret_var \"\$S\") $image $qcmd >/dev/null
       docker exec kamal-proxy kamal-proxy deploy $c --target $c:$port --host $label.$SGNL_APPS_DOMAIN --tls \
         --health-check-path $health --deploy-timeout 180s >/dev/null
@@ -212,7 +250,7 @@ up() {
 down() {
   ssh "$HOST" "docker exec kamal-proxy kamal-proxy remove $c 2>/dev/null || true
     docker rm -f $c >/dev/null 2>&1 || true
-    docker volume rm ${c}_data >/dev/null 2>&1 || true
+    docker volume rm ${c}_data ${c}_config >/dev/null 2>&1 || true
     rm -rf /opt/sgnl/matrix/$app
     echo down: $c"
   bin/sgnl-dns remove "$label"
