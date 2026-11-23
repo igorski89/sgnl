@@ -208,19 +208,29 @@ def check(app, page, user):
         return ok, f"graph={res.get('status')} name={res.get('name')} roles={[role.get(r, r[:8]) for r in res.get('roles') or []]} {res.get('err', '')}{res.get('keys', '')}"
     if app == "bulwark":
         page.goto(URL("inbox-next") + "/")
-        for _ in range(6):
+        clicked = False
+        for _ in range(8):
             page.wait_for_load_state("load")
+            page.wait_for_timeout(1500)
             if page.url.startswith(f"https://auth.{APPS_DOMAIN}"):
                 if authelia_login(page, user) == "registered":
                     page.goto(URL("inbox-next") + "/")
+                    clicked = False
                 continue
-            btn = page.get_by_role("button", name=re.compile("sign in|log in|continue", re.I))
-            if "/login" in page.url and btn.count():
+            btn = page.get_by_role("button", name=re.compile("sign in with sso", re.I))
+            # Click once: a second click starts a second login whose state
+            # doesn't match the first one's callback.
+            if "/login" in page.url and btn.count() and not clicked:
                 btn.first.click()
+                clicked = True
                 page.wait_for_timeout(3000)
                 continue
             break
-        page.wait_for_timeout(6000)
+        try:
+            page.wait_for_url(re.compile(r"/mail/"), timeout=30000)
+        except PWTimeout:
+            pass
+        page.wait_for_timeout(2000)
         txt = page.inner_text("body")[:3000]
         # The mailbox opened = Bulwark's JMAP session with Stalwart works,
         # i.e. Stalwart accepted Authelia's access token (via userinfo).
