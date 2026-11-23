@@ -176,4 +176,16 @@ identity_providers:
         authorization_policy: 'two_factor'
         claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
+      - client_id: 'bulwark'
+        client_name: 'Webmail (test copy)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_TEST_BULWARK_CLIENT_SECRET" }}'
+        redirect_uris: ['https://inbox-next.{{SGNL_APPS_DOMAIN}}/en/auth/callback']
+        scopes: ['openid', 'email', 'profile', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
+        consent_mode: 'implicit'
 ...

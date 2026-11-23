@@ -18,7 +18,7 @@ source "$(dirname "$0")/../lib/instance.sh"
 cd "$(dirname "$0")/.."
 HOST=root@$SGNL_HOST
 ISSUER="https://auth.$SGNL_APPS_DOMAIN/realms/$SGNL_REALM"
-APPS="grafana vaultwarden forgejo listmonk dashy opencloud"
+APPS="grafana vaultwarden forgejo listmonk dashy opencloud stalwart bulwark"
 
 usage() { sed -n '2,16p' "$0"; exit 1; }
 mode=${1:-}; app=${2:-}
@@ -53,6 +53,15 @@ case $app in
     extra_vols="-v ${c}_config:/etc/opencloud"
     entry=/bin/sh cmd=(/matrix-run.sh)
     file_target="run:/matrix-run.sh proxy:/etc/opencloud/proxy.yaml csp:/etc/opencloud/csp.yaml" ;;
+  stalwart)
+    # Mail server copy: JMAP over HTTP only (no SMTP/IMAP listeners exposed).
+    # Its "client secret" item holds the recovery admin, admin:<password>.
+    label=mail-next port=8080 image=$(base_image stalwart) data=/var/lib/stalwart health=/healthz/live
+    secret_var=STALWART_RECOVERY_ADMIN file_target=config:/etc/stalwart/config.json ;;
+  bulwark)
+    # Webmail copy, talking to the Stalwart copy (bring that up first).
+    label=inbox-next port=3000 image=$(grep -A3 'accessories:' config/deploy.bulwark.yml | grep -o 'ghcr.io/bulwarkmail/webmail:[0-9.]*' | head -1) data=/app/data health=/
+    secret_var=OAUTH_CLIENT_SECRET ;;
 esac
 url="https://${label:-}.$SGNL_APPS_DOMAIN"
 
@@ -222,6 +231,45 @@ file_opencloud_run() { echo 'opencloud init --insecure no >/dev/null 2>&1 || tru
 file_opencloud_proxy() { cat opencloud/proxy.yaml; }
 # The live CSP allows the live login host; the copy needs the test one.
 file_opencloud_csp() { bin/sgnl-render opencloud/csp.yaml | sed "s#id\.$SGNL_APPS_DOMAIN#auth.$SGNL_APPS_DOMAIN#g"; }
+
+env_stalwart() { echo "STALWART_PUBLIC_URL=$url"; }
+file_stalwart_config() { cat stalwart/config.json; }
+# Minimal plan: the mail domain, the OIDC directory (as
+# stalwart/plan-oidc.ndjson, test issuer), HTTP behind kamal-proxy, and
+# the two test accounts (an OIDC directory needs accounts to exist).
+setup_stalwart() {
+  local d=$SGNL_DOMAIN
+  {
+    echo '{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"'"$d"'","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Manual"},"certificateManagement":{"@type":"Manual"}}}}'
+    bin/sgnl-render stalwart/plan-oidc.ndjson | grep -v '^#' | grep . | sed "s#https://id\.$SGNL_APPS_DOMAIN#https://auth.$SGNL_APPS_DOMAIN#g"
+    echo '{"@type":"update","object":"Http","value":{"clientIpSource":"xForwardedFor","forwardedHops":1,"usePermissiveCors":true}}'
+    echo '{"@type":"update","object":"SystemSettings","value":{"defaultHostname":"'"$label.$SGNL_APPS_DOMAIN"'","defaultDomainId":"#mail-domain"}}'
+    for u in matrix-user matrix-admin; do
+      echo '{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"'"$u"'":{"@type":"User","name":"'"$u"'","domainId":"#mail-domain","description":"Authelia test"}}}'
+    done
+  } > "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson"
+  local admin; admin=$(bin/sgnl-secret authelia-test-stalwart-client-secret)
+  for i in $(seq 1 30); do curl -fsS -o /dev/null "$url/healthz/live" 2>/dev/null && break; sleep 2; done
+  STALWART_URL=$url STALWART_USER=${admin%%:*} STALWART_PASSWORD=${admin#*:} \
+    stalwart-cli apply --stdin < "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson" | tail -3
+  rm -f "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson"
+  ssh "$HOST" "docker restart $c >/dev/null && echo 'stalwart: plan applied, restarted'"
+}
+# As config/deploy.bulwark.yml, pointed at the test issuer and Stalwart copy.
+env_bulwark() { cat <<EOF
+JMAP_SERVER_URL=https://mail-next.$SGNL_APPS_DOMAIN
+OAUTH_ENABLED=true
+OAUTH_ONLY=true
+OAUTH_CLIENT_ID=bulwark
+OAUTH_ISSUER_URL=$ISSUER
+OAUTH_SCOPES=openid email profile offline_access
+OAUTH_END_SESSION=false
+STALWART_ADMIN_ACCESS=off
+BULWARK_TELEMETRY=off
+BULWARK_UPDATE_CHECK=off
+SESSION_SECRET=$(openssl rand -hex 32)
+EOF
+}
 
 up() {
   bin/sgnl-dns add "$label" "Authelia login matrix (test copy of $app)"
