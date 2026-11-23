@@ -305,9 +305,17 @@ def main(apps):
                     # (cloned-key check); runs that didn't save leave it stale.
                     cr["signCount"] = max(cr.get("signCount", 0), int(time.time()) - 1_700_000_000)
                     cdp.send("WebAuthn.addCredential", {"authenticatorId": auth, "credential": cr})
+            # Authelia sits under the issuer path only (as on id.): any
+            # request to the login host outside it is a routing failure.
+            prefix = f"https://auth.{APPS_DOMAIN}/realms/{os.environ['REALM']}/"
+            stray = []
+            page.on("request", lambda r: stray.append(r.url[:100]) if r.url.startswith(f"https://auth.{APPS_DOMAIN}/") and not r.url.startswith(prefix) else None)
             for app in apps:
+                stray.clear()
                 try:
                     ok, detail = check(app, page, user)
+                    if stray:
+                        ok, detail = False, detail + f" STRAY requests outside the issuer path: {stray[:3]}"
                 except (PWTimeout, Exception) as e:
                     ok, detail = False, f"{type(e).__name__}: {str(e)[:200]}"
                 s = shot(page, f"{app}-{user}")
