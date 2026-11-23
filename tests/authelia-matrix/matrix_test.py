@@ -232,7 +232,9 @@ def check(app, page, user):
 def main(apps):
     results = []
     with sync_playwright() as p:
-        b = p.chromium.launch(headless=True)
+        # Test hosts resolve straight to the server: a lookup made before a
+        # new record spread is cached as "no such name" for 30 minutes.
+        b = p.chromium.launch(headless=True, args=[f"--host-resolver-rules=MAP *.{APPS_DOMAIN} {os.environ['SGNL_HOST']}"])
         for user in USERS:
             ctx = b.new_context(ignore_https_errors=False)
             page = ctx.new_page()
@@ -245,6 +247,9 @@ def main(apps):
             cred_file = os.path.join(SHOTS, "..", f"passkey-{user}.json")
             if os.path.exists(cred_file):
                 for cr in json.load(open(cred_file)):
+                    # Authelia rejects a sign counter that went backwards
+                    # (cloned-key check); runs that didn't save leave it stale.
+                    cr["signCount"] = max(cr.get("signCount", 0), int(time.time()) - 1_700_000_000)
                     cdp.send("WebAuthn.addCredential", {"authenticatorId": auth, "credential": cr})
             for app in apps:
                 try:
