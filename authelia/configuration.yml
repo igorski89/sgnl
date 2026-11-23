@@ -80,6 +80,7 @@ identity_providers:
         assertion_consumer_service_urls: ['https://dashboard.stripe.com/login/saml/consume']
         name_id_format: 'email'
         authorization_policy: 'two_factor'
+        groups: ['sgnl_users']
   oidc:
     jwks:
       - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
@@ -89,6 +90,21 @@ identity_providers:
     cors:
       endpoints: ['authorization', 'token', 'revocation', 'introspection', 'userinfo']
       allowed_origins_from_client_redirect_uris: true
+    # Who may use which app, as Keycloak's login flows (keycloak/realm.yaml):
+    # every app needs group sgnl_users (sgnl-apps flow); Forgejo also needs
+    # forgejo_users (sgnl-forgejo). Invited people (sgnl_invited only) can
+    # finish their set-up in the portal but reach no app.
+    authorization_policies:
+      sgnl_apps:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject: 'group:sgnl_users'
+      sgnl_forgejo:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject: [['group:sgnl_users', 'group:forgejo_users']]
     # Keycloak puts groups, email, name and username in every client's ID
     # token; apps rely on it (Grafana's role, Forgejo's admin, Dashy). Our
     # fork's default policy (sgnl.5) does the same for every client.
@@ -123,7 +139,7 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'client_secret_basic'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         # No consent screen, as on Keycloak.
         consent_mode: 'implicit'
       - client_id: 'vaultwarden'
@@ -136,7 +152,7 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'client_secret_basic'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
       - client_id: 'forgejo'
         client_name: 'Forgejo (test copy)'
@@ -146,7 +162,7 @@ identity_providers:
         grant_types: ['authorization_code']
         response_types: ['code']
         token_endpoint_auth_method: 'client_secret_basic'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_forgejo'
         consent_mode: 'implicit'
       - client_id: 'listmonk'
         client_name: 'listmonk (test copy)'
@@ -156,7 +172,7 @@ identity_providers:
         grant_types: ['authorization_code']
         response_types: ['code']
         token_endpoint_auth_method: 'client_secret_basic'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
       - client_id: 'dashy'
         client_name: 'Dashy (test copy)'
@@ -168,7 +184,7 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
       - client_id: 'opencloud'
         client_name: 'OpenCloud web (test copy)'
@@ -185,7 +201,7 @@ identity_providers:
         token_endpoint_auth_method: 'none'
         # OpenCloud verifies access tokens itself (JWT, as with Keycloak).
         access_token_signed_response_alg: 'RS256'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
       - client_id: 'bulwark'
         client_name: 'Webmail (test copy)'
@@ -198,7 +214,7 @@ identity_providers:
         pkce_challenge_method: 'S256'
         # Bulwark sends its secret in the body (Keycloak takes either).
         token_endpoint_auth_method: 'client_secret_post'
-        authorization_policy: 'two_factor'
+        authorization_policy: 'sgnl_apps'
         # offline_access (stay logged in) always asks for consent in
         # Authelia; Keycloak doesn't. Pre-configured: asked once, remembered.
         consent_mode: 'pre-configured'
