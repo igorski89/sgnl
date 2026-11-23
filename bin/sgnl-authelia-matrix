@@ -249,10 +249,16 @@ setup_stalwart() {
     done
   } > "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson"
   local admin; admin=$(bin/sgnl-secret authelia-test-stalwart-client-secret)
-  for i in $(seq 1 30); do curl -fsS -o /dev/null "$url/healthz/live" 2>/dev/null && break; sleep 2; done
-  STALWART_URL=$url STALWART_USER=${admin%%:*} STALWART_PASSWORD=${admin#*:} \
+  pkill -f "18080:" 2>/dev/null || true
+  # Through an ssh tunnel to the container: no DNS lookup of the new name
+  # (a lookup before the record has spread gets cached as "no such name").
+  local ip; ip=$(ssh "$HOST" "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $c")
+  ssh -f -N -L 18080:$ip:8080 "$HOST" -o ExitOnForwardFailure=yes
+  for i in $(seq 1 30); do curl -fsS -o /dev/null http://localhost:18080/healthz/live 2>/dev/null && break; sleep 2; done
+  STALWART_URL=http://localhost:18080 STALWART_USER=${admin%%:*} STALWART_PASSWORD=${admin#*:} \
     stalwart-cli apply --stdin < "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson" | tail -3
   rm -f "${TMPDIR:-/tmp}/sgnl-matrix-stalwart.ndjson"
+  pkill -f "18080:$ip:8080" || true
   ssh "$HOST" "docker restart $c >/dev/null && echo 'stalwart: plan applied, restarted'"
 }
 # As config/deploy.bulwark.yml, pointed at the test issuer and Stalwart copy.
