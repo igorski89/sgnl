@@ -8,6 +8,7 @@
 #   bin/sgnl-authelia-matrix up <app>      # DNS, container, route (+ app setup)
 #   bin/sgnl-authelia-matrix down <app>    # remove container, volume, route, DNS
 #   bin/sgnl-authelia-matrix status
+#   bin/sgnl-authelia-matrix root          # the test host's placeholder root (TLS)
 #
 # Apps: grafana vaultwarden forgejo listmonk dashy. Each app's client is in
 # authelia/configuration.yml (deployed first); its secret is the vault
@@ -22,7 +23,7 @@ APPS="grafana vaultwarden forgejo listmonk dashy opencloud stalwart bulwark"
 
 usage() { sed -n '2,16p' "$0"; exit 1; }
 mode=${1:-}; app=${2:-}
-[[ $mode == status ]] || [[ " $APPS " == *" $app "* ]] || usage
+[[ $mode == status || $mode == root ]] || [[ " $APPS " == *" $app "* ]] || usage
 c="sgnl-matrix-$app"
 cmd=() secret_var="" file_target="" entry="" extra_vols=""
 # file_target: "name:/path ..." -> file_<app>_<name> is mounted at /path.
@@ -313,7 +314,20 @@ down() {
   bin/sgnl-dns remove "$label"
 }
 
+# The test host's root: a placeholder that owns / and the TLS certificate
+# (kamal-proxy takes TLS only on a root service), so the test Authelia can
+# sit under the issuer prefix only, as production will on id.
+root_up() {
+  ssh "$HOST" "set -e; docker rm -f sgnl-auth-root >/dev/null 2>&1 || true
+    docker run -d --name sgnl-auth-root --network kamal --restart unless-stopped --label sgnl.matrix=1 busybox:1.37 \
+      sh -c 'mkdir -p /www && echo ok > /www/up && exec httpd -f -p 8080 -h /www' >/dev/null
+    docker exec kamal-proxy kamal-proxy deploy sgnl-auth-root --target sgnl-auth-root:8080 --host auth.$SGNL_APPS_DOMAIN --tls \
+      --health-check-path /up --deploy-timeout 60s >/dev/null
+    echo up: sgnl-auth-root (root of auth.$SGNL_APPS_DOMAIN)"
+}
+
 case $mode in
+  root) root_up; exit ;;
   up) up ;;
   down) down ;;
   status) ssh "$HOST" "docker ps -a --filter label=sgnl.matrix=1 --format '{{.Names}}\t{{.Status}}'" ;;

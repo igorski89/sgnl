@@ -3,11 +3,8 @@
 # (instance/docs/PLAN-authelia-test.md). Keycloak stays the live login;
 # only test users and throwaway app copies log in here.
 #
-# One container, SQLite in a volume. The whole test host is routed here:
-# kamal-proxy takes TLS only on a host's root service, so a path_prefix-only
-# service can't have it. Apps use the issuer /realms/<realm>; Authelia
-# also answers on / (another issuer), which the cutover must hide (on id.,
-# with Keycloak or a stub as the root service). authelia/configuration.yml is uploaded to /opt/sgnl/authelia by
+# One container, SQLite in a volume, behind the issuer prefix only (see
+# proxy: below). authelia/configuration.yml is uploaded to /opt/sgnl/authelia by
 # .kamal/hooks/pre-app-boot. Not in the backups (test data).
 #
 #   kamal setup -c config/deploy.authelia.yml
@@ -22,8 +19,13 @@ servers:
     options:
       network-alias: sgnl-authelia
 proxy:
-  ssl: true
+  # Only the issuer prefix is routed here, as production will be on id.
+  # (Authelia also answers on / with another issuer). kamal-proxy takes TLS
+  # only on a host's root service: a placeholder (sgnl-auth-root,
+  # bin/sgnl-authelia-matrix root) owns / and the certificate.
   host: auth.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  path_prefix: /realms/<%= ENV.fetch("SGNL_REALM") %>
+  strip_path_prefix: false
   app_port: 9091
   healthcheck:
     path: /realms/<%= ENV.fetch("SGNL_REALM") %>/api/health
