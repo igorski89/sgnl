@@ -8,7 +8,9 @@ Sets:
   app.root_url     https://listmonk.<SGNL_APPS_DOMAIN>
   security.oidc    Keycloak login (client "listmonk", keycloak/realm.yaml);
                    no auto-created accounts: Keycloak users log in to the
-                   listmonk account with the same email
+                   listmonk account with the same email; the login page
+                   goes straight to Keycloak (auto_login, our fork;
+                   break-glass password form: /admin/login?password)
   the super admin  (LISTMONK_ADMIN_USER = SGNL_ADMIN_USER) gets the email
                    <SGNL_ADMIN_USER>@<SGNL_DOMAIN>, so that person's
                    Keycloak login opens it
@@ -74,7 +76,10 @@ oidc = {"enabled": True, "provider_url": f"https://id.{APPS}/realms/{REALM}",
         "auto_create_users": False,
         # As on Postgres (listmonk 6 -> 7 upgrade); a fresh install defaults to
         # true. Keycloak's emails are set by admins, not self-registered.
-        "verify_email": False}
+        "verify_email": False,
+        # Our fork (v7.0.0-beta.2-sqlite.2+): /admin/login goes straight to
+        # Keycloak. Password form (break-glass): /admin/login?password.
+        "auto_login": True}
 smtp = [{"enabled": True, "exclude_from_default": False, "host": I["SGNL_SMTP_HOST"], "port": 587, "auth_protocol": "login",
          "username": secret("ses-smtp-username"), "password": secret("ses-smtp-password"),
          "hello_hostname": f"listmonk.{APPS}", "max_conns": 5, "idle_timeout": "15s",

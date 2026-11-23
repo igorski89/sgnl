@@ -260,9 +260,12 @@ the tag there (after upstream releases are merged into the fork), run the
 restore drill, then `bin/sgnl-deploy listmonk` (stop-first: a few seconds
 down). The database is one SQLite file in the volume `sgnl_listmonk_data`.
 
-DNS: `listmonk.sgnl` (DNS.md). Login: "SGNL" on the login page, matched by
-email to an existing listmonk account (no auto-created accounts: add
-people in listmonk → Users with their `<user>@<domain>` email).
+DNS: `listmonk.sgnl` (DNS.md). Login: straight to Keycloak (our fork's
+`auto_login`, set by bin/sgnl-listmonk-setup), matched by email to an
+existing listmonk account (no auto-created accounts: add people in
+listmonk → Users with their `<user>@<domain>` email). The break-glass
+password form is at `/admin/login?password`; after a logout the form
+shows for an hour instead of logging straight back in.
 
 **Sending** (`aws/campaigns.tf`, then `bin/sgnl-listmonk-setup`): SES
 SMTP with the header `X-SES-CONFIGURATION-SET: <prefix>-campaigns`; that
