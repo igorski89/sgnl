@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Automated login matrix (instance/docs/PLAN-authelia-test.md): a headless
 # Chromium with a virtual passkey logs in to each app copy
-# (bin/sgnl-authelia-matrix up <app>) as matrix-user and matrix-admin
+# (bin/sgnl-authelia-matrix up <app>) as matrix-user, matrix-admin and
+# matrix-outsider (in no group: must be refused everywhere)
 # through the test Authelia, and checks what the app made of them
 # (role/admin, account refused where live refuses it).
 #
@@ -21,5 +22,6 @@ export APPS=$SGNL_APPS_DOMAIN REALM=$SGNL_REALM DOMAIN=$SGNL_DOMAIN SGNL_HOST SH
 mkdir -p "$SHOTS"
 PW_MATRIX_USER=$(bin/sgnl-secret authelia-test-matrix-user-password)
 PW_MATRIX_ADMIN=$(bin/sgnl-secret authelia-test-matrix-admin-password)
-export PW_MATRIX_USER PW_MATRIX_ADMIN
+PW_MATRIX_OUTSIDER=$(bin/sgnl-secret authelia-test-matrix-outsider-password)
+export PW_MATRIX_USER PW_MATRIX_ADMIN PW_MATRIX_OUTSIDER
 exec "${SGNL_MATRIX_PYTHON:-$HOME/.cache/sgnl/matrix/venv/bin/python}" tests/authelia-matrix/matrix_test.py "$@"

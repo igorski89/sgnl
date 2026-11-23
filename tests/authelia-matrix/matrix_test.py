@@ -9,7 +9,49 @@ APPS_DOMAIN = os.environ["APPS"]
 ISSUER = f"https://auth.{APPS_DOMAIN}/realms/{os.environ['REALM']}"
 SSH = ["ssh", "root@" + os.environ["SGNL_HOST"]]
 SHOTS = os.environ["SHOTS"]
-USERS = {"matrix-user": os.environ["PW_MATRIX_USER"], "matrix-admin": os.environ["PW_MATRIX_ADMIN"]}
+USERS = {"matrix-user": os.environ["PW_MATRIX_USER"], "matrix-admin": os.environ["PW_MATRIX_ADMIN"],
+         "matrix-outsider": os.environ["PW_MATRIX_OUTSIDER"]}   # in no group: every app must refuse
+
+# Who must be refused (as Keycloak's login flows: sgnl_users for every
+# app, forgejo_users too for Forgejo).
+def must_refuse(app, user):
+    return user == "matrix-outsider" or (app == "forgejo" and user == "matrix-user")
+
+
+def start(app, page):
+    """Begin an app's login, up to the point it sends the browser to Authelia."""
+    if app == "grafana":
+        page.goto(URL("monitor-next") + "/login/generic_oauth")
+    elif app == "forgejo":
+        page.goto(URL("git-next") + "/user/oauth2/authelia")
+    elif app == "listmonk":
+        page.goto(URL("listmonk-next") + "/admin/login")
+    elif app in ("dashy", "opencloud"):
+        page.goto(URL("home-next" if app == "dashy" else "drive-next") + "/")
+    elif app == "vaultwarden":
+        page.goto(URL("vault-next") + "/#/login")
+        box = page.locator("input[type=email]:visible").first
+        box.wait_for(timeout=30000)
+        box.fill("x@" + os.environ["DOMAIN"])
+        page.get_by_role("button", name=re.compile("single sign-on", re.I)).first.click()
+    elif app == "bulwark":
+        page.goto(URL("inbox-next") + "/")
+        page.wait_for_timeout(2500)
+        page.get_by_role("button", name=re.compile("sign in with sso", re.I)).first.click()
+
+
+def expect_refused(app, page, user):
+    """The login must end with Authelia's access_denied back at the app."""
+    seen = []
+    page.on("request", lambda r: seen.append(r.url) if "error=access_denied" in r.url else None)
+    start(app, page)
+    for _ in range(8):
+        page.wait_for_timeout(1500)
+        if seen:
+            break
+        if page.url.startswith(f"https://auth.{APPS_DOMAIN}"):
+            authelia_login(page, user)
+    return bool(seen), f"refused={'yes (access_denied)' if seen else 'NO'}"
 URL = lambda label: f"https://{label}.{APPS_DOMAIN}"
 
 
@@ -115,6 +157,8 @@ def login_via(page, start, user, done_re, max_steps=4):
 
 
 def check(app, page, user):
+    if must_refuse(app, user):
+        return expect_refused(app, page, user)
     admin = user == "matrix-admin"
     req = page.context.request
     if app == "grafana":
