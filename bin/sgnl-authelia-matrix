@@ -323,7 +323,7 @@ root_up() {
       sh -c 'mkdir -p /www && echo ok > /www/up && exec httpd -f -p 8080 -h /www' >/dev/null
     docker exec kamal-proxy kamal-proxy deploy sgnl-auth-root --target sgnl-auth-root:8080 --host auth.$SGNL_APPS_DOMAIN --tls \
       --health-check-path /up --deploy-timeout 60s >/dev/null
-    echo up: sgnl-auth-root (root of auth.$SGNL_APPS_DOMAIN)"
+    echo up: sgnl-auth-root, root of auth.$SGNL_APPS_DOMAIN"
 }
 
 case $mode in
