@@ -76,11 +76,15 @@ identity_providers:
     cors:
       endpoints: ['authorization', 'token', 'revocation', 'introspection', 'userinfo']
       allowed_origins_from_client_redirect_uris: true
+    # Keycloak puts groups, email, name and username in every client's ID
+    # token; apps rely on it (Grafana's role, Forgejo's admin, Dashy). Our
+    # fork's default policy (sgnl.5) does the same for every client.
+    default_claims_policy: 'keycloak_like'
     claims_policies:
-      # Apps that read groups etc. from the ID token (Grafana's role,
-      # Forgejo, Dashy). Keycloak puts them there for every client.
-      id_token_groups:
+      keycloak_like:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+        # Only apps that verify JWT access tokens themselves read these (OpenCloud).
+        access_token: ['email', 'email_verified', 'preferred_username', 'groups']
     clients:
       # The agent (replaces bin/sgnl-kc's Keycloak service account):
       # client credentials only, for the admin API.
@@ -107,10 +111,7 @@ identity_providers:
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'two_factor'
-        # Grafana reads the role from the ID token's groups (Keycloak puts
-        # them there; Authelia only with a claims policy). No consent
-        # screen, as on Keycloak.
-        claims_policy: 'id_token_groups'
+        # No consent screen, as on Keycloak.
         consent_mode: 'implicit'
       - client_id: 'vaultwarden'
         client_name: 'Vaultwarden (test copy)'
@@ -133,7 +134,6 @@ identity_providers:
         response_types: ['code']
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'two_factor'
-        claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
       - client_id: 'listmonk'
         client_name: 'listmonk (test copy)'
@@ -156,7 +156,6 @@ identity_providers:
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
         authorization_policy: 'two_factor'
-        claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
       - client_id: 'opencloud'
         client_name: 'OpenCloud web (test copy)'
@@ -174,7 +173,6 @@ identity_providers:
         # OpenCloud verifies access tokens itself (JWT, as with Keycloak).
         access_token_signed_response_alg: 'RS256'
         authorization_policy: 'two_factor'
-        claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
       - client_id: 'bulwark'
         client_name: 'Webmail (test copy)'
