@@ -37,6 +37,11 @@ builder:
 volumes:
   - "sgnl_authelia_data:/data"
   - "/opt/sgnl/authelia/configuration.yml:/config/configuration.yml:ro"
+  # TEST-ONLY SAML signing key + certificate (throwaway, generated on the
+  # server, root-only, never Keycloak's realm key; Stripe is never pointed
+  # here: the real Stripe test is at the cutover dress rehearsal).
+  - "/opt/sgnl/authelia-saml-test/saml-test.key:/config/saml-test.key:ro"
+  - "/opt/sgnl/authelia-saml-test/saml-test.crt:/config/saml-test.crt:ro"
 env:
   secret:
     - AUTHELIA_SESSION_SECRET

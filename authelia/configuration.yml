@@ -67,6 +67,19 @@ notifier:
     filename: '/data/notifications.txt'
 
 identity_providers:
+  # SAML 2.0 IdP (our fork, sgnl.6+) for Stripe. TEST: throwaway key/cert
+  # (config/deploy.authelia.yml); Stripe is not pointed here.
+  saml:
+    key: {{ secret "/config/saml-test.key" | mindent 8 "|" | msquote }}
+    certificate_chain: {{ secret "/config/saml-test.crt" | mindent 8 "|" | msquote }}
+    # Also answer on Keycloak's paths (<issuer>/protocol/saml, /descriptor),
+    # so Stripe's stored settings stay valid at cutover.
+    enable_keycloak_endpoints: true
+    service_providers:
+      - entity_id: 'https://dashboard.stripe.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://dashboard.stripe.com/login/saml/consume']
+        name_id_format: 'email'
+        authorization_policy: 'two_factor'
   oidc:
     jwks:
       - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
