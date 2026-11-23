@@ -618,7 +618,11 @@ clients:
           id.token.claim: "false"
           introspection.token.claim: "true"
     defaultClientScopes: [basic, acr, roles, web-origins, profile, email, groups]
-    optionalClientScopes: [offline_access]
+    # No offline_access: Claude Code asks for it, and tokens refreshed on
+    # an offline session can't be exchanged (Keycloak standard token
+    # exchange), so the gateway broke 5 min after each login. Without it
+    # Claude Code refreshes on the normal session (idle 8 h, max 7 days).
+    optionalClientScopes: []
     authenticationFlowBindingOverrides:
       browser: sgnl-apps
 
