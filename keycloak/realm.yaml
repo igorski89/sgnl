@@ -568,6 +568,60 @@ clients:
     serviceAccountsEnabled: true
     defaultClientScopes: [basic, roles]
 
+  # MCP gateway (instance/docs/PLAN-mcp.md, M0 auth spike). sgnl-mcp is
+  # the gateway itself: no login of its own; it takes a person's token
+  # (which carries "sgnl-mcp" in its audience) and trades it here
+  # (standard token exchange) for a short-lived token it calls the apps
+  # with, so the person's own token never reaches an app.
+  - clientId: sgnl-mcp
+    name: "SGNL MCP gateway"
+    enabled: true
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    secret: "{{KEYCLOAK_SGNL_MCP_CLIENT_SECRET}}"
+    standardFlowEnabled: false
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+    attributes:
+      standard.token.exchange.enabled: "true"
+    defaultClientScopes: [basic, acr, roles, profile, email, groups]
+    optionalClientScopes: []
+
+  # Claude Code connecting to the MCP gateway: a public client (PKCE), the
+  # person logs in in their browser (password + passkey). Claude Code's
+  # callback is http://localhost:<port>/callback; the port is pinned with
+  # `claude mcp add --callback-port 47621`. Tokens carry aud "sgnl-mcp".
+  # Later, other MCP clients log in without registration (CIMD).
+  - clientId: sgnl-mcp-claude-code
+    name: "Claude Code (MCP)"
+    enabled: true
+    publicClient: true
+    standardFlowEnabled: true
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+    consentRequired: false
+    redirectUris:
+      - "http://localhost:47621/callback"
+      - "http://127.0.0.1:47621/callback"
+    webOrigins: []
+    attributes:
+      pkce.code.challenge.method: S256
+    protocolMappers:
+      - name: audience-sgnl-mcp
+        protocol: openid-connect
+        protocolMapper: oidc-audience-mapper
+        config:
+          included.client.audience: sgnl-mcp
+          access.token.claim: "true"
+          id.token.claim: "false"
+          introspection.token.claim: "true"
+    defaultClientScopes: [basic, acr, roles, web-origins, profile, email, groups]
+    optionalClientScopes: [offline_access]
+    authenticationFlowBindingOverrides:
+      browser: sgnl-apps
+
   # Stripe Dashboard login over SAML (docs.stripe.com/get-started/account/sso/other).
   # Keycloak only confirms who someone is (NameID = their email); roles
   # stay in Stripe ("Stripe Dashboard" role assignment), and Stripe's own
