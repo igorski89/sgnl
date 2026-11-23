@@ -148,10 +148,11 @@ Unmodified vendor apps that need neither a zero-downtime swap nor a build
 can instead run as a Kamal *accessory* behind the same proxy (Kamal 2.12:
 `proxy:` and `files:` on accessories): no Dockerfile, no build, no
 registry, config files rendered and uploaded by Kamal. Dashy, Bulwark,
-Collabora and listmonk do (`config/deploy.<app>.yml`, accessory `web`);
+and Collabora do (`config/deploy.<app>.yml`, accessory `web`);
 restarts are a few seconds down instead of a health-gated swap. The
 passthrough Dockerfiles remain for apps that need the swap or a build
-(Keycloak, Stalwart, Forgejo, OpenCloud, Vaultwarden, Grafana).
+(Keycloak, Stalwart, Forgejo, OpenCloud, Vaultwarden, Grafana), and
+listmonk's builds our fork from source (`docker/listmonk/Dockerfile`).
 
 Kamal's zero-downtime swap + `kamal-proxy` registration is tied to its
 build → push → pull → boot lifecycle, which expects to own an

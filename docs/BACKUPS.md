@@ -5,7 +5,7 @@ Nightly, encrypted, off-site. Live since 2026-10-08 (first snapshot
 
 | | |
 |---|---|
-| What | Stalwart volume (all mail), Forgejo, Vaultwarden, OpenCloud (config + data), listmonk (`pg_dump` + uploads), Bulwark (admin config, per-user webmail settings), Keycloak (`pg_dump`, since 2026-10-18: users, groups, passwords, passkeys, clients, signing keys), `/opt/sgnl/stalwart` (config). Authelia and lldap left the backup on 2026-10-19 (replaced by Keycloak); snapshots that still contain them age out after 35 days |
+| What | Stalwart volume (all mail), Forgejo, Vaultwarden, OpenCloud (config + data), listmonk (SQLite volume + uploads; `pg_dump` until 2026-11), Bulwark (admin config, per-user webmail settings), Keycloak (`pg_dump`, since 2026-10-18: users, groups, passwords, passkeys, clients, signing keys), `/opt/sgnl/stalwart` (config). Authelia and lldap left the backup on 2026-10-19 (replaced by Keycloak); snapshots that still contain them age out after 35 days |
 | When | 01:30 UTC (+ up to 10 min), systemd `sgnl-backup.timer`; cotenant's backup runs at 03:00 |
 | Where | Cloudflare R2, bucket `example-sgnl-backups` (EU jurisdiction, same account as cotenant) |
 | How | `host/backup/sgnl-backup.sh` on the host: rsync (`-aHAX`: keeps extended attributes, which OpenCloud needs) each volume to `/opt/sgnl/backup/staging`, `docker pause` the app for a second rsync (consistent copy, ~1–2 s), then restic (`restic/restic:0.19.1`). Keycloak's Postgres is not copied as files: `pg_dump -Fc` inside its container writes `staging/keycloak/keycloak.dump` (consistent, doesn't block Keycloak) |
@@ -53,7 +53,7 @@ bin/sgnl-backup-install --run      # ...and back up now
 bin/sgnl-backup-restore-test       # restore drill (below)
 bin/sgnl-backup-restore-test-all        # all of them, with a summary (monthly, after upgrades)
 bin/sgnl-backup-restore-test-keycloak   # Keycloak: dump -> throwaway Postgres + Keycloak
-bin/sgnl-backup-restore-test-listmonk   # listmonk: dump + uploads -> throwaway Postgres + listmonk
+bin/sgnl-backup-restore-test-listmonk   # listmonk: SQLite volume + uploads -> throwaway listmonk
 
 ssh root@203.0.113.10 journalctl -u sgnl-backup -n 100   # last runs
 ssh root@203.0.113.10 systemctl list-timers sgnl-backup.timer
@@ -147,14 +147,20 @@ instance, not `pg_upgrade`.
 
 ## Restore drill: listmonk
 
-`bin/sgnl-backup-restore-test-listmonk [snapshot]` restores the dump and
-the uploads, loads the dump into a throwaway Postgres (live's image),
-starts a throwaway listmonk (live's image) on an internal network (no
-internet: it can't send anything), then checks: `/health`, counts of
-lists/subscribers/campaigns/templates/users next to live, settings
+`bin/sgnl-backup-restore-test-listmonk [snapshot]` restores the database
+volume (`sgnl_listmonk_data`, one SQLite file: our fork,
+config/deploy.listmonk.yml) and the uploads, starts a throwaway listmonk
+(live's image) on the copy on an internal network (no internet: it can't
+send anything), then checks: `/health`, SQLite's integrity check, counts
+of lists/subscribers/campaigns/templates/users next to live, settings
 (root URL, Keycloak login, SES webhook and topic) equal to live, and
-uploads present. First run 2026-11-18: OK (snapshot e0315858). Run it
-before every listmonk or Postgres upgrade.
+uploads present. Run it before every listmonk upgrade. (On Postgres,
+first run 2026-11-18: OK.)
+
+The database is copied like Forgejo's: paused, the whole volume
+(`listmonk.db` with its `-wal`/`-shm` files) at once, so the copy is what
+SQLite would find after a power cut, which it recovers from. Copying
+`listmonk.db` alone while listmonk runs would not be safe.
 
 Real restore: `kamal accessory boot postgres -c config/deploy.keycloak.yml`
 on an empty volume, `docker exec -i sgnl-keycloak-postgres pg_restore -U

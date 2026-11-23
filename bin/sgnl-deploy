@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploys one app the safe way: a committed tree only (so the image tag is a
 # real commit, never "_uncommitted"), stop-first for the apps that can't run
-# twice on the same data (Forgejo, Stalwart: docs/DEPLOY.md), secrets via
+# twice on the same data (Forgejo, Stalwart, listmonk: docs/DEPLOY.md), secrets via
 # bin/sgnl-env, then checks the app answers on its public URL. A stop-first
 # deploy that fails boots the version that ran before. The full Kamal
 # output goes to ~/.cache/sgnl/deploy/; its end is shown on failure.
@@ -11,7 +11,7 @@
 #   bin/sgnl-deploy --all               # every app config, least critical first
 #
 # <app> = the <app> in config/deploy.<app>.yml. Accessory-only configs
-# (vendor images: dashy, bulwark, listmonk, collabora) reboot their
+# (vendor images: dashy, bulwark, collabora) reboot their
 # proxied accessory after pulling its image; --all leaves them out (name
 # them). Databases and monitoring parts are not touched; use kamal
 # accessory ... for those.
@@ -19,8 +19,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source lib/instance.sh
 
-STOP_FIRST=" forgejo stalwart "   # second container can't open the same store
-ORDER=(monitoring opencloud vaultwarden keycloak forgejo stalwart)
+STOP_FIRST=" forgejo stalwart listmonk "   # second container can't open the same store / would double-send
+ORDER=(monitoring opencloud vaultwarden keycloak listmonk forgejo stalwart)
 LOGS=$HOME/.cache/sgnl/deploy
 
 stop_flag=""

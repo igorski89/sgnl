@@ -9,7 +9,7 @@
 #      pause is what makes the copy consistent (RocksDB and SQLite are
 #      crash-safe, so a frozen copy restores like after a power cut),
 #      and the bulk pass keeps it to a second or two as data grows.
-#      Keycloak's and listmonk's Postgres are dumped (pg_dump) into staging.
+#      Keycloak's Postgres is dumped (pg_dump) into staging.
 #   2. restic (official image) backs up staging + /opt/sgnl config,
 #      encrypted on this host, then applies retention.
 #   3. Any failure emails ALERT_TO through SES.
@@ -25,7 +25,8 @@ RESTIC_IMAGE=restic/restic:0.19.1
 # shellcheck source=/dev/null
 . "$BASE/notify.env" # ALERT_TO, SES_SMTP_USERNAME, SES_SMTP_PASSWORD
 
-# Kamal service label -> Docker volume (Forgejo: repos + LFS + SQLite).
+# Kamal service label -> Docker volume (Forgejo: repos + LFS + SQLite;
+# listmonk: SQLite in sgnl_listmonk_data).
 # One line per volume; a service with two volumes is paused once per volume.
 # Collabora has no state worth keeping (its WOPI proof key is regenerated).
 APPS=(
@@ -34,7 +35,8 @@ APPS=(
   "sgnl-vaultwarden sgnl_vaultwarden_data"
   "sgnl-opencloud sgnl_opencloud_config"
   "sgnl-opencloud sgnl_opencloud_data"
-  "sgnl-listmonk-web sgnl_listmonk_uploads"
+  "sgnl-listmonk sgnl_listmonk_data"
+  "sgnl-listmonk sgnl_listmonk_uploads"
   "sgnl-bulwark-web sgnl_bulwark_data"
 )
 
@@ -87,7 +89,7 @@ for app in "${APPS[@]}"; do
   snapshot_volume $app
 done
 
-# Postgres databases (Keycloak, listmonk): a dump, not a file copy (a copy
+# Postgres database (Keycloak): a dump, not a file copy (a copy
 # of a running Postgres is only crash-consistent). pg_dump takes one
 # consistent snapshot without blocking the app, and runs inside the
 # server's own container, so client and server versions always match.
@@ -103,12 +105,11 @@ dump_pg() { # <name> <container> <db user = db name>
   fi
 }
 dump_pg keycloak sgnl-keycloak-postgres keycloak
-dump_pg listmonk sgnl-listmonk-postgres listmonk
 
 # Staging holds exactly the volumes in APPS plus the database dumps above.
 # Anything else (a retired app, a migrated volume) is removed, so it leaves
 # the next snapshot instead of being backed up again every night.
-keep=" keycloak listmonk "
+keep=" keycloak "
 for entry in "${APPS[@]}"; do keep+="${entry#* } "; done
 for dir in "$STAGING"/*/; do
   name=$(basename "$dir")

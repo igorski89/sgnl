@@ -133,10 +133,12 @@ what it would do; add `-- --apply` to do it. ⏳ Not run. Your go.
   Postgres won't demote. So that user is `dbadmin` (no password; the
   image trusts only connections from inside the container, so it is
   reachable only as `docker exec <container> psql -U dbadmin`), and each
-  app has a normal user owning its database (`keycloak`, `listmonk`).
-  Why: listmonk's SQL segmentation (permission `subscribers:sql_query`)
-  runs typed-in SQL; as a superuser that could call functions like
-  `pg_read_file`. Fresh databases get this from
+  app has a normal user owning its database (`keycloak`; `listmonk` until
+  it moved to SQLite). Why: listmonk's SQL segmentation (permission
+  `subscribers:sql_query`) runs typed-in SQL; as a superuser that could
+  call functions like `pg_read_file`. On SQLite (our fork, since 2026-11)
+  that SQL runs in a read-only sandbox (allowed tables and functions only;
+  no `users`, no second statement). Fresh databases get this from
   `postgres/initdb-app-user.sh`; the live ones were switched by renaming
   the old superuser to `dbadmin` and handing every object to a new app
   user with the same password hash. An app upgrade that wants an extension

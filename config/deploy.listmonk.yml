@@ -3,68 +3,78 @@
 # double opt-in, subscriber self-service. Login via Keycloak (client
 # "listmonk", keycloak/realm.yaml); the local super admin
 # (LISTMONK_ADMIN_PASSWORD) is break-glass only. Settings that live in
-# listmonk's database (root URL, OIDC) are set by bin/sgnl-listmonk-setup.
-# Sending (SMTP via SES, a separate sending domain, bounce webhook) is not
-# configured yet: docs/DEPLOY.md "listmonk".
+# listmonk's database (root URL, OIDC, SMTP/SES, bounces) are set by
+# bin/sgnl-listmonk-setup.
 #
-#   kamal accessory boot postgres -c config/deploy.listmonk.yml   # once, first
-#   kamal accessory boot web -c config/deploy.listmonk.yml
+# Our fork with an SQLite backend (github.com/igorski89/listmonk, branch
+# sqlite; docker/listmonk/Dockerfile builds a pinned tag). The database is
+# one SQLite file in sgnl_listmonk_data, backed up like Forgejo's
+# (pause + copy of the volume, docs/BACKUPS.md). Until 2026-11 listmonk
+# ran the vendor image on its own Postgres (accessory below, retired).
+#
+# Stop-first (bin/sgnl-deploy): two containers on one SQLite file would
+# both run the campaign sender.
+#
+#   bin/sgnl-deploy listmonk
 #   bin/sgnl-listmonk-setup
 service: sgnl-listmonk
-image: listmonk/listmonk
-# registry/builder: required by Kamal's config check; nothing is built or pushed.
-registry:
-  server: localhost:5555
-builder:
-  arch: amd64
-# First start creates the schema; kamal-proxy waits this long for /health.
-deploy_timeout: 120
+image: sgnl-listmonk
 
-accessories:
-  # The app: the unmodified vendor image behind kamal-proxy (an accessory:
-  # no Dockerfile/build/registry; bin/sgnl-deploy listmonk = kamal accessory
-  # reboot web, a few seconds down). v7 beta on purpose: it processes SES
-  # complaints and limits the bounce webhook to our SNS topic
-  # (bin/sgnl-listmonk-setup is written for v7); 7.0.0 once released.
+servers:
   web:
-    image: listmonk/listmonk:v7.0.0-beta.2
-    host: <%= ENV.fetch("SGNL_HOST") %>
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
     # Creates the schema on the first start (idempotent), applies
     # upgrades, then runs; --config '' = configuration from env only.
     cmd: sh -c "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && exec ./listmonk --config ''"
     options:
       network-alias: sgnl-listmonk
       memory: 256m
-    proxy:
-      ssl: true
-      host: listmonk.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
-      app_port: 9000
-      healthcheck:
-        path: /health
-    # Uploaded media (images in campaigns); in the nightly backup.
-    volumes:
-      - "sgnl_listmonk_uploads:/listmonk/uploads"
-    env:
-      clear:
-        TZ: "<%= ENV.fetch("SGNL_TZ") %>"
-        LISTMONK_app__address: "0.0.0.0:9000"
-        LISTMONK_db__host: "sgnl-listmonk-db"
-        LISTMONK_db__port: "5432"
-        LISTMONK_db__user: "listmonk"
-        LISTMONK_db__database: "listmonk"
-        LISTMONK_db__ssl_mode: "disable"
-        LISTMONK_db__max_open: "10"
-        LISTMONK_db__max_idle: "10"
-        # Super admin created on the first start only (break-glass).
-        LISTMONK_ADMIN_USER: "<%= ENV.fetch("SGNL_ADMIN_USER") %>"
-      secret:
-        - LISTMONK_db__password:LISTMONK_POSTGRES_PASSWORD
-        - LISTMONK_ADMIN_PASSWORD
 
+proxy:
+  ssl: true
+  host: listmonk.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  app_port: 9000
+  healthcheck:
+    path: /health
+
+# First start creates the schema; kamal-proxy waits this long for /health.
+deploy_timeout: 120
+
+registry:
+  server: localhost:5555
+
+# Old versions kept on the server for kamal rollback (default 5; disk).
+retain_containers: 2
+
+builder:
+  arch: amd64
+  dockerfile: docker/listmonk/Dockerfile
+  context: docker/listmonk
+
+volumes:
+  # The SQLite database (listmonk.db + its -wal/-shm files).
+  - "sgnl_listmonk_data:/listmonk/data"
+  # Uploaded media (images in campaigns), served publicly: never the DB.
+  - "sgnl_listmonk_uploads:/listmonk/uploads"
+
+env:
+  clear:
+    TZ: "<%= ENV.fetch("SGNL_TZ") %>"
+    LISTMONK_app__address: "0.0.0.0:9000"
+    LISTMONK_db__driver: "sqlite"
+    LISTMONK_db__path: "/listmonk/data/listmonk.db"
+    # Super admin created on the first start only (break-glass).
+    LISTMONK_ADMIN_USER: "<%= ENV.fetch("SGNL_ADMIN_USER") %>"
+  secret:
+    - LISTMONK_ADMIN_PASSWORD
+
+accessories:
+  # RETIRED (listmonk moved to SQLite): kept, stopped, as the way back
+  # until it's deleted (instance/docs/TODO.md). Not booted by any script.
   postgres:
     # Postgres 18's image keeps its data under /var/lib/postgresql/18/docker,
-    # so the volume is mounted at /var/lib/postgresql. Major upgrades are a
-    # dump + restore into a new volume (sgnl_listmonk_db18 came from 17 that way).
+    # so the volume is mounted at /var/lib/postgresql.
     image: postgres:18.7-alpine
     host: <%= ENV.fetch("SGNL_HOST") %>
     options:
@@ -72,9 +82,6 @@ accessories:
       memory: 256m
     volumes:
       - "sgnl_listmonk_db18:/var/lib/postgresql"
-    # First start on an empty volume: dbadmin is the bootstrap superuser
-    # (no password, docker exec only), listmonk a normal user owning the
-    # database (postgres/initdb-app-user.sh, docs/SECURITY.md §2c).
     files:
       - postgres/initdb-app-user.sh:/docker-entrypoint-initdb.d/90-app-user.sh
     env:

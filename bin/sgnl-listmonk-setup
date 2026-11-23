@@ -26,8 +26,9 @@ in listmonk's UI are overwritten by the next run: change them here.
 
 Written for listmonk 7 (from_email is a list, bounce.ses an object).
 Values are merged into the stored JSON (keys listmonk adds in later
-versions are kept). SQL goes to psql on stdin over SSH, so secrets are
-never on a command line.
+versions are kept). listmonk runs our SQLite fork (config/deploy.listmonk.yml):
+the SQL goes over SSH on stdin to the sqlite3 CLI in its container, so
+secrets are never on a command line.
 """
 import json, os, subprocess, sys
 
@@ -60,19 +61,21 @@ def topic_arn():
 
 
 def q(s):
-    """A SQL literal: dollar-quoted, so JSON and secrets need no escaping."""
-    tag = "$sgnl$"
-    if tag in s:
-        sys.exit("sgnl-listmonk-setup: value contains the quoting tag")
-    return f"{tag}{s}{tag}"
+    """An SQLite string literal (no backslash escapes in SQLite: only ' doubles)."""
+    if "\0" in s:
+        sys.exit("sgnl-listmonk-setup: NUL in a value")
+    return "'" + s.replace("'", "''") + "'"
 
 
 oidc = {"enabled": True, "provider_url": f"https://id.{APPS}/realms/{REALM}",
         "redirect_url": f"https://listmonk.{APPS}/auth/oidc",
         "provider_name": "SGNL", "client_id": "listmonk",
         "client_secret": secret("keycloak-listmonk-client-secret"),
-        "auto_create_users": False}
-smtp = [{"enabled": True, "host": I["SGNL_SMTP_HOST"], "port": 587, "auth_protocol": "login",
+        "auto_create_users": False,
+        # As on Postgres (listmonk 6 -> 7 upgrade); a fresh install defaults to
+        # true. Keycloak's emails are set by admins, not self-registered.
+        "verify_email": False}
+smtp = [{"enabled": True, "exclude_from_default": False, "host": I["SGNL_SMTP_HOST"], "port": 587, "auth_protocol": "login",
          "username": secret("ses-smtp-username"), "password": secret("ses-smtp-password"),
          "hello_hostname": f"listmonk.{APPS}", "max_conns": 5, "idle_timeout": "15s",
          "wait_timeout": "5s", "max_msg_retries": 2, "msg_retry_delay": "10ms",
@@ -80,33 +83,40 @@ smtp = [{"enabled": True, "host": I["SGNL_SMTP_HOST"], "port": 587, "auth_protoc
          "email_headers": [{"X-SES-CONFIGURATION-SET": CONFIG_SET}], "from_addresses": []}]
 bounce_actions = {"soft": {"count": 2, "action": "none"}, "hard": {"count": 1, "action": "blocklist"},
                   "complaint": {"count": 1, "action": "blocklist"}}
-sql = f"""\\set ON_ERROR_STOP on
+NOW = "strftime('%Y-%m-%d %H:%M:%f+00:00', 'now')"   # the fork's timestamp format
+sql = f"""\
+.bail on
+.timeout 10000
 BEGIN;
-UPDATE settings SET value = to_jsonb({q(f"https://listmonk.{APPS}")}::text), updated_at = NOW()
+UPDATE settings SET value = json_quote({q(f"https://listmonk.{APPS}")}), updated_at = {NOW}
   WHERE key = 'app.root_url';
-UPDATE settings SET value = value || {q(json.dumps(oidc))}::jsonb, updated_at = NOW()
+UPDATE settings SET value = json_patch(value, {q(json.dumps(oidc))}), updated_at = {NOW}
   WHERE key = 'security.oidc';
-UPDATE settings SET value = jsonb_build_array({q(FROM)}::text), updated_at = NOW() WHERE key = 'app.from_email';
-UPDATE settings SET value = {q(json.dumps(smtp))}::jsonb, updated_at = NOW() WHERE key = 'smtp';
-UPDATE settings SET value = 'true'::jsonb, updated_at = NOW()
+UPDATE settings SET value = json_array({q(FROM)}), updated_at = {NOW} WHERE key = 'app.from_email';
+UPDATE settings SET value = json({q(json.dumps(smtp))}), updated_at = {NOW} WHERE key = 'smtp';
+UPDATE settings SET value = 'true', updated_at = {NOW}
   WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled');
-UPDATE settings SET value = value || {q(json.dumps({"enabled": True, "topic_arns": [topic_arn()]}))}::jsonb, updated_at = NOW()
+UPDATE settings SET value = json_patch(value, {q(json.dumps({"enabled": True, "topic_arns": [topic_arn()]}))}), updated_at = {NOW}
   WHERE key = 'bounce.ses';
-UPDATE settings SET value = {q(json.dumps(bounce_actions))}::jsonb, updated_at = NOW() WHERE key = 'bounce.actions';
-UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = NOW()
-  WHERE username = {q(ADMIN)} AND email IS DISTINCT FROM {q(f"{ADMIN}@{DOMAIN}")};
-SELECT 'root_url ' || (SELECT value #>> '{{}}' FROM settings WHERE key = 'app.root_url');
-SELECT 'oidc ' || (SELECT (value->>'enabled') || ' ' || (value->>'provider_url') FROM settings WHERE key = 'security.oidc');
-SELECT 'from ' || (SELECT value->>0 FROM settings WHERE key = 'app.from_email');
-SELECT 'smtp ' || (SELECT string_agg((e->>'host') || ':' || (e->>'port') || ' ' || (e->>'enabled'), ', ') FROM settings, jsonb_array_elements(value) e WHERE key = 'smtp');
-SELECT 'bounces ' || (SELECT string_agg(key || '=' || (value #>> '{{}}'), ' ' ORDER BY key) FROM settings WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled'))
-  || ' ses=' || (SELECT (value->>'enabled') || ' topics=' || jsonb_array_length(value->'topic_arns') FROM settings WHERE key = 'bounce.ses');
+UPDATE settings SET value = json({q(json.dumps(bounce_actions))}), updated_at = {NOW} WHERE key = 'bounce.actions';
+UPDATE users SET email = {q(f"{ADMIN}@{DOMAIN}")}, updated_at = {NOW}
+  WHERE username = {q(ADMIN)} AND email IS NOT {q(f"{ADMIN}@{DOMAIN}")};
+SELECT 'root_url ' || (SELECT value ->> '$' FROM settings WHERE key = 'app.root_url');
+SELECT 'oidc ' || (SELECT (value ->> '$.enabled') || ' ' || (value ->> '$.provider_url') FROM settings WHERE key = 'security.oidc');
+SELECT 'from ' || (SELECT value ->> '$[0]' FROM settings WHERE key = 'app.from_email');
+SELECT 'smtp ' || (SELECT group_concat((e.value ->> '$.host') || ':' || (e.value ->> '$.port') || ' ' || (e.value ->> '$.enabled'), ', ')
+  FROM settings, json_each(settings.value) e WHERE settings.key = 'smtp');
+SELECT 'bounces ' || (SELECT group_concat(key || '=' || value, ' ') FROM (SELECT key, value FROM settings
+  WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled') ORDER BY key))
+  || ' ses=' || (SELECT (value ->> '$.enabled') || ' topics=' || json_array_length(value, '$.topic_arns') FROM settings WHERE key = 'bounce.ses');
 SELECT 'admin ' || username || ' <' || email || '>' FROM users WHERE username = {q(ADMIN)};
 COMMIT;
 """
-remote = ("set -e; docker exec -i sgnl-listmonk-postgres psql -q -t -A -U listmonk -d listmonk; "
-          "c=$(docker ps -q --filter name='^sgnl-listmonk-web$'); "
-          "[ -n \"$c\" ] && docker restart $c >/dev/null && echo restarted listmonk")
+# The running listmonk container (Kamal service sgnl-listmonk, role web).
+remote = ("set -e; c=$(docker ps -q --filter label=service=sgnl-listmonk --filter label=role=web | head -1); "
+          "[ -n \"$c\" ] || { echo 'listmonk is not running' >&2; exit 1; }; "
+          "docker exec -i $c sqlite3 /listmonk/data/listmonk.db; "
+          "docker restart $c >/dev/null && echo restarted listmonk")
 r = subprocess.run(["ssh", f"root@{HOST}", remote], input=sql, text=True, capture_output=True)
 print(r.stdout.strip())
 if r.returncode:

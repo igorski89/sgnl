@@ -245,13 +245,20 @@ Keycloak switch, `../instance/docs/PLAN-keycloak.md`).
 ## 5a. listmonk (campaigns)
 
 ```bash
-kamal accessory boot postgres -c config/deploy.listmonk.yml   # its own Postgres
-kamal accessory boot web -c config/deploy.listmonk.yml   # first start creates the schema and the
-                                            # super admin (SGNL_ADMIN_USER, break-glass)
+bin/sgnl-deploy listmonk                    # builds our fork (SQLite); first start creates the
+                                            # schema and the super admin (SGNL_ADMIN_USER, break-glass)
 bin/sgnl-keycloak-apply                     # client "listmonk"
-bin/sgnl-listmonk-setup                     # root URL, Keycloak login, admin's email
-bin/sgnl-backup-install                     # nightly pg_dump + uploads volume
+bin/sgnl-listmonk-setup                     # root URL, Keycloak login, admin's email, SES, bounces
+bin/sgnl-backup-install                     # nightly copy of the database + uploads volumes
 ```
+
+listmonk runs our fork, github.com/igorski89/listmonk (branch `sqlite`):
+upstream listmonk plus an SQLite backend, because upstream needs Postgres
+and stopped taking code contributions (`../instance/docs/PLAN-listmonk-sqlite.md`).
+`docker/listmonk/Dockerfile` builds a pinned tag of it; to upgrade, bump
+the tag there (after upstream releases are merged into the fork), run the
+restore drill, then `bin/sgnl-deploy listmonk` (stop-first: a few seconds
+down). The database is one SQLite file in the volume `sgnl_listmonk_data`.
 
 DNS: `listmonk.sgnl` (DNS.md). Login: "SGNL" on the login page, matched by
 email to an existing listmonk account (no auto-created accounts: add

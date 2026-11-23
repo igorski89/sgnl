@@ -104,7 +104,8 @@ ssh root@<ip> 'docker run --rm --env-file /opt/sgnl/backup/restic.env \
 
 Then, per volume in `APPS` of `host/backup/sgnl-backup.sh`
 (`sgnl_stalwart_v1`, `sgnl_forgejo_data`, `sgnl_vaultwarden_data`,
-`sgnl_opencloud_config`, `sgnl_opencloud_data`, `sgnl_listmonk_uploads`):
+`sgnl_opencloud_config`, `sgnl_opencloud_data`, `sgnl_listmonk_data`,
+`sgnl_listmonk_uploads`):
 
 ```bash
 ssh root@<ip> 'docker volume create <vol> && \
@@ -121,7 +122,7 @@ config: `rsync -a /opt/sgnl/backup/r/config/stalwart/ /opt/sgnl/stalwart/`.
 
 Follow `docs/DEPLOY.md` §1–6b with these differences:
 
-- **Databases before their apps** (Keycloak first, then listmonk): boot
+- **Keycloak's database before Keycloak**: boot
   only the Postgres accessory (Postgres 18, volume `*_db18` mounted at
   `/var/lib/postgresql`), restore its dump from the snapshot, then deploy
   the app:
@@ -129,15 +130,14 @@ Follow `docs/DEPLOY.md` §1–6b with these differences:
   kamal accessory boot postgres -c config/deploy.keycloak.yml
   ssh root@<ip> 'docker exec -i sgnl-keycloak-postgres pg_restore -U keycloak \
     -d keycloak --no-owner --exit-on-error < /opt/sgnl/backup/r/staging/keycloak/keycloak.dump'
-  # same for listmonk: sgnl-listmonk-postgres, user/db listmonk,
-  # staging/listmonk/listmonk.dump; then bin/sgnl-listmonk-setup
   ```
-  The fresh database's app user (`keycloak`, `listmonk`) is a normal user
+  The fresh database's app user (`keycloak`) is a normal user
   owning it; `dbadmin` is the superuser (`docker exec … psql -U dbadmin`,
   docs/SECURITY.md §2c). Restore as the app user, as above.
   Users, passkeys and clients come back from the dump; don't re-run the
-  first-login or invite steps. listmonk's settings, lists and subscribers
-  are in its dump too.
+  first-login or invite steps. listmonk keeps everything (settings,
+  lists, subscribers, users) in its SQLite file in `sgnl_listmonk_data`,
+  restored with the volumes above: just deploy it.
 - **Stalwart 1.x** starts on the restored `sgnl_stalwart_v1`;
   `bin/stalwart-apply` (and `stalwart/plan-oidc.ndjson`) is safe to re-run.
 - **AWS needs nothing:** the SES pipeline, campaigns configuration set and
