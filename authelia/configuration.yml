@@ -106,4 +106,50 @@ identity_providers:
         # screen, as on Keycloak.
         claims_policy: 'id_token_groups'
         consent_mode: 'implicit'
+      - client_id: 'vaultwarden'
+        client_name: 'Vaultwarden (test copy)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_TEST_VAULTWARDEN_CLIENT_SECRET" }}'
+        redirect_uris: ['https://vault-next.{{SGNL_APPS_DOMAIN}}/identity/connect/oidc-signin']
+        scopes: ['openid', 'email', 'profile', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
+        consent_mode: 'implicit'
+      - client_id: 'forgejo'
+        client_name: 'Forgejo (test copy)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_TEST_FORGEJO_CLIENT_SECRET" }}'
+        redirect_uris: ['https://git-next.{{SGNL_APPS_DOMAIN}}/user/oauth2/authelia/callback']
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
+        claims_policy: 'id_token_groups'
+        consent_mode: 'implicit'
+      - client_id: 'listmonk'
+        client_name: 'listmonk (test copy)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_TEST_LISTMONK_CLIENT_SECRET" }}'
+        redirect_uris: ['https://listmonk-next.{{SGNL_APPS_DOMAIN}}/auth/oidc']
+        scopes: ['openid', 'email', 'profile']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
+        consent_mode: 'implicit'
+      - client_id: 'dashy'
+        client_name: 'Dashy (test copy)'
+        public: true
+        redirect_uris: ['https://home-next.{{SGNL_APPS_DOMAIN}}/', 'https://home-next.{{SGNL_APPS_DOMAIN}}']
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        authorization_policy: 'two_factor'
+        claims_policy: 'id_token_groups'
+        consent_mode: 'implicit'
 ...
