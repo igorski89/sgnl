@@ -87,4 +87,17 @@ identity_providers:
         audience: ['https://auth.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'one_factor'
+      # Login matrix: throwaway app copies on <app>-next hosts
+      # (bin/sgnl-authelia-matrix). Same client ids as the live apps.
+      - client_id: 'grafana'
+        client_name: 'Grafana (test copy)'
+        client_secret: '$plaintext${{ env "SGNL_AUTHELIA_TEST_GRAFANA_CLIENT_SECRET" }}'
+        redirect_uris: ['https://monitor-next.{{SGNL_APPS_DOMAIN}}/login/generic_oauth']
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
 ...

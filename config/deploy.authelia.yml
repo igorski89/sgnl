@@ -47,6 +47,8 @@ env:
     # AUTHELIA_* variables).
     - SGNL_AUTHELIA_OIDC_JWK_B64
     - SGNL_AUTHELIA_AGENT_CLIENT_SECRET
+    # Login matrix: the throwaway app copies' clients.
+    - SGNL_AUTHELIA_TEST_GRAFANA_CLIENT_SECRET
   clear:
     X_AUTHELIA_CONFIG_FILTERS: template
     TZ: UTC
