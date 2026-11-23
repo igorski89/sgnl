@@ -1,0 +1,52 @@
+# C8 rehearsal (throwaway, local): every secret here is a test value.
+server:
+  address: 'tcp://:9091/realms/test'
+  tls:
+    key: '/cfg/tls.key'
+    certificate: '/cfg/tls.crt'
+log:
+  level: 'debug'
+identity_validation:
+  reset_password:
+    jwt_secret: 'rehearsal-jwt-secret-0123456789abcdef0123456789abcdef'
+totp:
+  disable: true
+webauthn:
+  display_name: 'C8 rehearsal'
+authentication_backend:
+  database:
+    search:
+      email: true
+access_control:
+  default_policy: 'two_factor'
+session:
+  secret: 'rehearsal-session-secret-0123456789abcdef0123456789ab'
+  cookies:
+    - domain: 'id.example.com'
+      authelia_url: 'https://id.example.com:8443/realms/test'
+storage:
+  encryption_key: 'rehearsal-storage-key-0123456789abcdef0123456789abcd'
+  local:
+    path: '/data/db.sqlite3'
+notifier:
+  filesystem:
+    filename: '/data/notifications.txt'
+identity_providers:
+  oidc:
+    hmac_secret: 'rehearsal-hmac-secret-0123456789abcdef0123456789abcdef'
+    jwks:
+      - key: {{ secret "/cfg/jwk.pem" | mindent 10 "|" | msquote }}
+    default_claims_policy: 'keycloak_like'
+    claims_policies:
+      keycloak_like:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+    clients:
+      - client_id: 'rehearsal'
+        client_secret: '$plaintext$rehearsal-client-secret'
+        redirect_uris: ['https://app.example.com/cb']
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'two_factor'
+        consent_mode: 'implicit'

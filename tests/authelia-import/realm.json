@@ -1,0 +1,17 @@
+{"realm":"test","enabled":true,"loginWithEmailAllowed":true,"duplicateEmailsAllowed":false,"registrationAllowed":false,
+ "webAuthnPolicyRpEntityName":"SGNL test","webAuthnPolicyUserVerificationRequirement":"preferred",
+ "webAuthnPolicyPasswordlessPasskeysEnabled":false,
+ "groups":[{"name":"sgnl_users"},{"name":"admins"},{"name":"developers"},{"name":"forgejo_users"}],
+ "authenticationFlows":[
+  {"alias":"sgnl-login","providerId":"basic-flow","topLevel":true,"builtIn":false,"authenticationExecutions":[
+    {"authenticator":"auth-cookie","requirement":"ALTERNATIVE","priority":10,"autheticatorFlow":false},
+    {"flowAlias":"sgnl-login-forms","requirement":"ALTERNATIVE","priority":20,"autheticatorFlow":true}]},
+  {"alias":"sgnl-login-forms","providerId":"basic-flow","topLevel":false,"builtIn":false,"authenticationExecutions":[
+    {"authenticator":"auth-username-password-form","requirement":"REQUIRED","priority":10,"autheticatorFlow":false},
+    {"flowAlias":"sgnl-login-second-factor","requirement":"REQUIRED","priority":20,"autheticatorFlow":true}]},
+  {"alias":"sgnl-login-second-factor","providerId":"basic-flow","topLevel":false,"builtIn":false,"authenticationExecutions":[
+    {"authenticator":"webauthn-authenticator","requirement":"REQUIRED","priority":10,"autheticatorFlow":false}]}],
+ "browserFlow":"sgnl-login",
+ "users":[
+  {"username":"alice-test","email":"alice-test@example.com","emailVerified":true,"firstName":"Alice","lastName":"Test","enabled":true,"groups":["/sgnl_users"],"requiredActions":["webauthn-register"]},
+  {"username":"bob-test","email":"bob-test@example.com","emailVerified":true,"firstName":"Bob","lastName":"Test","enabled":true,"groups":["/sgnl_users","/admins","/forgejo_users"],"requiredActions":["webauthn-register"]}]}

@@ -4,7 +4,7 @@
 useDefault = true
 
 [allowlist]
-description = "Known fakes: Vector redaction tests (made-up keys by design); Keycloak's database URL (host and port, no password)"
-paths = ['''monitoring/vector/tests\.yaml''']
+description = "Known fakes: Vector redaction tests (made-up keys by design); the Authelia import rehearsal's throwaway local config; Keycloak's database URL (host and port, no password)"
+paths = ['''monitoring/vector/tests\.yaml''', '''tests/authelia-import/configuration\.yml''']
 regexTarget = "line"
 regexes = ['''jdbc:postgresql://sgnl-keycloak-db:5432/keycloak''']
