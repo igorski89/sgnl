@@ -20,6 +20,11 @@ theme: 'auto'
 
 server:
   address: 'tcp://:9091/realms/{{SGNL_REALM}}'
+  # Stripe's SAML login URL (signed, with RelayState) plus the cookies on
+  # this host exceed the 4 KB default (431 Request Header Fields Too Large).
+  buffers:
+    read: 16384
+    write: 16384
 
 log:
   level: 'info'
