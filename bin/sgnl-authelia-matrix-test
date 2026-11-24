@@ -24,4 +24,7 @@ PW_MATRIX_USER=$(bin/sgnl-secret authelia-test-matrix-user-password)
 PW_MATRIX_ADMIN=$(bin/sgnl-secret authelia-test-matrix-admin-password)
 PW_MATRIX_OUTSIDER=$(bin/sgnl-secret authelia-test-matrix-outsider-password)
 export PW_MATRIX_USER PW_MATRIX_ADMIN PW_MATRIX_OUTSIDER
-exec "${SGNL_MATRIX_PYTHON:-$HOME/.cache/sgnl/matrix/venv/bin/python}" tests/authelia-matrix/matrix_test.py "$@"
+PY="${SGNL_MATRIX_PYTHON:-$HOME/.cache/sgnl/matrix/venv/bin/python}"
+# --native: the OpenCloud desktop/iOS/Android logins (tests/authelia-matrix/native_test.py)
+[[ ${1:-} == --native ]] && exec "$PY" tests/authelia-matrix/native_test.py
+exec "$PY" tests/authelia-matrix/matrix_test.py "$@"

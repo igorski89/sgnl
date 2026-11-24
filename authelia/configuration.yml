@@ -225,7 +225,8 @@ identity_providers:
       - client_id: 'opencloud-desktop'
         client_name: 'OpenCloud desktop (test)'
         public: true
-        redirect_uris: ['http://127.0.0.1', 'http://localhost']
+        # The desktop app sends http://127.0.0.1:<port> (any port allowed).
+        redirect_uris: ['http://127.0.0.1']
         scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
         grant_types: ['authorization_code', 'refresh_token']
         response_types: ['code']
