@@ -55,5 +55,6 @@ env:
     SGNL_MCP_SESSION_IDLE: 1h
     # AI apps trusted to show the send/share confirmation to the person;
     # any other client (Codex until tested) can't send or share.
-    # TEMPORARY: sgnl-mcp-codex only for its auto-accept test (2026-11-25).
-    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai,sgnl-mcp-codex
+    # Not sgnl-mcp-codex: in its no-approval mode Codex answers the send dialog
+    # by itself (tested 2026-11-25), so the person isn't really asked.
+    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai
