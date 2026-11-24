@@ -56,8 +56,8 @@ IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
 ( umask 077; docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LIVE" | grep . > "$ENVF" )
 docker network create --internal $NAME >/dev/null
 docker run -d --name $NAME --network $NAME --env-file "$ENVF" \
-  -e AUTHELIA_NOTIFIER_SMTP_DISABLE_STARTUP_CHECK=true --health-interval 3s \
-  -v "$T/staging/sgnl_id_data:/data" "$IMAGE" >/dev/null
+  -e AUTHELIA_NOTIFIER_DISABLE_STARTUP_CHECK=true --health-interval 3s \
+  -v "$T/staging/sgnl_id_data:/data" -v /opt/sgnl/id/configuration.yml:/config/configuration.yml:ro "$IMAGE" >/dev/null
 for i in $(seq 1 45); do
   s=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $NAME 2>/dev/null || echo gone)
   [[ $s == healthy ]] && break
