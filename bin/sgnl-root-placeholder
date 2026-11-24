@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# A placeholder that owns a host's root (/) and its TLS certificate, for a
+# host whose real service is path-only (kamal-proxy gives TLS only to a
+# host's root service). On id.<apps>: the login server (sgnl-id) serves
+# only /realms/<realm>; as a root it would also answer / with a second
+# login page and issuer. The placeholder answers 404 (and /up for health).
+# Idempotent; kamal-proxy keeps the route across restarts.
+#
+#   bin/sgnl-root-placeholder <name> <subdomain> [route-to-replace]
+#   bin/sgnl-root-placeholder sgnl-id-root id sgnl-keycloak-web   # M6, once
+#   bin/sgnl-root-placeholder sgnl-id-root id                     # rebuild
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+[[ $# -ge 2 ]] || { sed -n 2,13p "$0"; exit 1; }
+name=$1 host=$2.$SGNL_APPS_DOMAIN replace=${3:-}
+ssh "root@$SGNL_HOST" "set -e
+  docker rm -f $name >/dev/null 2>&1 || true
+  docker run -d --name $name --network kamal --restart unless-stopped --memory 16m busybox:1.37 \
+    sh -c 'mkdir -p /www && echo ok > /www/up && exec httpd -f -p 8080 -h /www' >/dev/null
+  ${replace:+docker exec kamal-proxy kamal-proxy remove $replace}
+  docker exec kamal-proxy kamal-proxy deploy $name --target $name:8080 --host $host --tls \
+    --health-check-path /up --deploy-timeout 60s >/dev/null
+  echo up: $name, root of $host"
