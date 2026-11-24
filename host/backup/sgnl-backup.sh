@@ -9,7 +9,6 @@
 #      pause is what makes the copy consistent (RocksDB and SQLite are
 #      crash-safe, so a frozen copy restores like after a power cut),
 #      and the bulk pass keeps it to a second or two as data grows.
-#      Keycloak's Postgres is dumped (pg_dump) into staging.
 #   2. restic (official image) backs up staging + /opt/sgnl config,
 #      encrypted on this host, then applies retention.
 #   3. Any failure emails ALERT_TO through SES.
@@ -91,27 +90,10 @@ for app in "${APPS[@]}"; do
   snapshot_volume $app
 done
 
-# Postgres database (Keycloak): a dump, not a file copy (a copy
-# of a running Postgres is only crash-consistent). pg_dump takes one
-# consistent snapshot without blocking the app, and runs inside the
-# server's own container, so client and server versions always match.
-dump_pg() { # <name> <container> <db user = db name>
-  echo "==> dumping $1's database"
-  if docker ps -q --filter name="^$2\$" | grep -q .; then
-    mkdir -p "$STAGING/$1"
-    docker exec "$2" pg_dump -U "$3" -Fc "$3" > "$STAGING/$1/$1.dump.tmp"
-    mv "$STAGING/$1/$1.dump.tmp" "$STAGING/$1/$1.dump"
-    echo "$1.dump: $(du -h "$STAGING/$1/$1.dump" | cut -f1)"
-  else
-    notify_failure "$2 is not running; $1's last dump is kept as is"
-  fi
-}
-dump_pg keycloak sgnl-keycloak-postgres keycloak
-
-# Staging holds exactly the volumes in APPS plus the database dumps above.
+# Staging holds exactly the volumes in APPS.
 # Anything else (a retired app, a migrated volume) is removed, so it leaves
 # the next snapshot instead of being backed up again every night.
-keep=" keycloak "
+keep=" "
 for entry in "${APPS[@]}"; do keep+="${entry#* } "; done
 for dir in "$STAGING"/*/; do
   name=$(basename "$dir")
