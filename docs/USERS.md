@@ -9,6 +9,7 @@ One identity per person: **`alice@example.com` works everywhere.**
 | Webmail (Bulwark), vault, files, git, start page | nothing: "Sign in" sends you to the SGNL login page |
 | Mail apps (IMAP 993 / SMTP 465) | `alice@example.com` + an **app password** |
 | Own account (password, passkeys) | `https://id.sgnl.example.com/realms/example/settings` (start page tile) |
+| AI apps (Claude, Codex) | nothing: they open the SGNL login page (below, "Using SGNL from AI apps") |
 
 Since 2026-11-24 people live in the **login server**, our Authelia fork
 (service `sgnl-id`, `config/deploy.id.yml`; Keycloak from 2026-10-19,
@@ -37,8 +38,7 @@ Login rules (`id/configuration.yml`):
   lockout. The login page shows the same error as for a wrong password
   while locked. Lift it early: break-glass below.
 - **Sessions** (`session`): 8 h idle, 7 days max, no remember-me. Access
-  tokens live up to 1 h (Authelia's default; the config sets no
-  lifespan). `disable`/`logout` make the login server refuse a person's
+  tokens live 5 min (`lifespans.access_token`; the MCP logins 1 h). `disable`/`logout` make the login server refuse a person's
   sessions and tokens at once; only an app that checks a signed access
   token itself (OpenCloud's clients get JWTs) may accept one until it
   expires.
@@ -183,6 +183,20 @@ Pitfalls:
   Stalwart for 24 h (10 per hour), which also blocks mail apps on that
   network: `DEPLOY.md`, "If you get auto-banned".
 
+### Using SGNL from AI apps
+
+Everyone in `sgnl_users` can connect an AI app (Claude Code, claude.ai
+with Claude Desktop and the phone apps, Codex) to their mail, calendar,
+contacts and files through the MCP gateway; nothing to add per person
+(`DEPLOY.md` §6c). Tell them the address
+`https://mcp.sgnl.example.com/mcp` and the name `sgnl-<instance>`, and
+point them to "Getting started" in the gateway's user guide
+(github.com/igorski89/sgnl-mcp, `docs/user-guide.md`). The AI app sends
+them to the SGNL login page (password + passkey); before it sends mail
+or saves into a shared space, it asks them to confirm. With Codex,
+sending mail and saving into shared spaces are refused (`SECURITY.md` §6e). Disabling or
+suspending the account cuts the AI apps off too.
+
 ## Shared mailboxes (groups)
 
 Shared addresses are Stalwart **Groups** (decided 2026-10-09; not mailing
@@ -298,7 +312,7 @@ It blocks every way in, because several bypass the SSO login:
 
 | Where | Suspend does | Blocks |
 |---|---|---|
-| Login server | account disabled, all sessions and tokens (incl. refresh/offline) ended (`bin/sgnl-id disable`) | every SSO login, at once; a signed access token an app checks itself lasts ≤ 1 h |
+| Login server | account disabled, all sessions and tokens (incl. refresh/offline) ended (`bin/sgnl-id disable`) | every SSO login, at once; a signed access token an app checks itself lasts ≤ 5 min |
 | Stalwart | `authenticate` permission disabled (Merge) | webmail/JMAP, IMAP, SMTP, **app passwords**; mail keeps arriving |
 | Forgejo | prohibit login | web and **git tokens** |
 | OpenCloud | account disabled (`accountEnabled=false`) | apps, **app tokens** (WebDAV); files and shares stay |

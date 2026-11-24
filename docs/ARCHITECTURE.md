@@ -30,6 +30,7 @@ there).
 | OpenCloud | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
 | listmonk | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES with bounce and complaint handling |
 | Collabora Online (CODE) | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
+| MCP gateway ([sgnl-mcp](https://github.com/igorski89/sgnl-mcp)) | `mcp.sgnl.example.com` | One MCP endpoint (`/mcp`) over the apps for AI clients (Claude Code, claude.ai, Codex): mail, calendar and contacts through Stalwart's JMAP, files through OpenCloud. No data of its own. See "AI apps: the MCP gateway" below |
 
 Exact versions: the `FROM` line of each `docker/<service>/Dockerfile`
 (databases and monitoring: `image:` in `config/deploy.*.yml`); newer ones:
@@ -44,6 +45,39 @@ Deliberately **not** built yet: PrivateBin, chat, Headscale/Tailscale mesh,
 CrowdSec, AI log triage, an external uptime check, Cloudflare Tunnel. Add these later, on their own `config/deploy.*.yml`
 files, once Phase 1 is stable — see "Deferred / not built" below for why
 each was cut.
+
+## AI apps: the MCP gateway
+
+AI clients (Claude Code, claude.ai with Claude Desktop and the phone
+apps, Codex) talk to SGNL through one MCP server,
+`https://mcp.sgnl.example.com/mcp`: service `sgnl-mcp`,
+`config/deploy.mcp.yml`, image pinned in `docker/mcp/Dockerfile` (our
+own project, github.com/igorski89/sgnl-mcp). It is a translator, not a
+store: mail, calendar and contacts go to Stalwart over JMAP, files to
+OpenCloud; it keeps nothing on disk.
+
+- **Login**: each person logs in with their SGNL account (password +
+  passkey) at the login server, through one client per AI app
+  (`sgnl-mcp-claude-code`, `sgnl-mcp-claude-ai`, `sgnl-mcp-codex` in
+  `id/configuration.yml`). That login token is only good at the
+  gateway.
+- **Per-app tokens**: the gateway never forwards the login token. It
+  exchanges it at the login server (RFC 8693 token
+  exchange, as its own client `sgnl-mcp`) for a 5-minute token for one
+  app (audience `stalwart-webui` for mail, `opencloud` for files). The
+  apps refuse tokens issued for anyone else.
+- **Who**: everyone in `sgnl_users`, checked against the login server's
+  current view on every login token, so disabling an account cuts the
+  AI apps off too.
+- **Confirmation**: sending mail and saving into shared spaces need a
+  yes from the person in a dialog the AI app shows (MCP elicitation).
+  Only AI apps known to show that dialog honestly may do it (Claude
+  Code and claude.ai); with any other (Codex) those actions are refused
+  (`docs/SECURITY.md` §6e).
+
+Why a gateway and not each app's own API: one login and one set of
+rules for every AI client, tokens scoped to one app each, and the
+send/share check in one place instead of trusting each AI app's prompt.
 
 ## Why self-host at all — the cost math
 

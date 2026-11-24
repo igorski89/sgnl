@@ -120,7 +120,7 @@ config: `rsync -a /opt/sgnl/backup/r/config/stalwart/ /opt/sgnl/stalwart/`.
 
 ## 5. Deploy, in the order of docs/DEPLOY.md
 
-Follow `docs/DEPLOY.md` §1–6b with these differences:
+Follow `docs/DEPLOY.md` §1–6c with these differences:
 
 - **Login server**: its data (`sgnl_id_data`) is one of the volumes
   above; deploy it as in §1 (placeholder, then `bin/sgnl-deploy id`)
@@ -139,6 +139,9 @@ Follow `docs/DEPLOY.md` §1–6b with these differences:
 - **Skip every "first time" step** (creating admins, Vaultwarden signups,
   Forgejo setup, Stalwart bootstrap): the restored data already has them.
 - `bin/sgnl-deploy id` is safe to re-run (its config is code).
+- **MCP gateway** (`docs/DEPLOY.md` §6c): no data, nothing to restore; just
+  `bin/sgnl-deploy mcp` once the login server, Stalwart and OpenCloud
+  are up. People's AI apps reconnect by themselves (or log in again).
 
 **Check:** `docs/DEPLOY.md` §7 sanity pass; log in at
 `https://id.sgnl.example.com/realms/example/settings`, `https://drive.sgnl.example.com`,

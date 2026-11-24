@@ -41,6 +41,7 @@ factors enforced once in the login server** (password + passkey on every login, 
 | Bulwark | Login server, password form hidden (`OAUTH_ONLY`) | — |
 | Stalwart web UI (`/account`, `/admin`) | Login server (public PKCE client) | Break-glass admin (`STALWART_RECOVERY_ADMIN`), used by `bin/stalwart-apply` |
 | Dashy | Login server (public PKCE client) | — |
+| MCP gateway (AI apps) | Login server (public PKCE client per AI app), §6e | — |
 | Stalwart IMAP 993 / submission 465 | Per-device **app passwords** (created in `/account`) | Apple Mail, iOS Mail and Thunderbird can't do OAuth against a third-party IdP |
 | SES relay account | Password (machine) | Scoped so it can only deliver to local mailboxes (§3) |
 | Collabora | No user login; admin console disabled | Only OpenCloud's WOPI endpoint may load files (`aliasgroup1`); WOPI proof key per install |
@@ -175,6 +176,7 @@ those listeners 🧪.
 | Web UI bundle pinned (v1.0.11) instead of "latest from GitHub" | ✅🧪 |
 | HTTP behind kamal-proxy: real client IPs (`X-Forwarded-For`), HSTS | ✅ · ⏳ verify bans hit client IPs, not 172.19.0.3 |
 | Logs to stdout (`kamal app logs`) | ✅🧪 |
+| Signed (JWT) access tokens only with audience `stalwart-webui` (`acceptedAudiences` in `stalwart/plan-oidc.ndjson`), so a login token for another app (the MCP gateway's) is refused here. Opaque tokens (webmail, web UI) are checked through userinfo, without an audience check (§6e) | ✅ 2026-11-24 |
 
 Operational gotchas found while testing (also in `DEPLOY.md`):
 - A ban covers *everything* from that IP, admin API included, and
@@ -244,6 +246,7 @@ Replaced the Nextcloud + ONLYOFFICE plan on 2026-10-11: one Go service
 | Suspend: OpenCloud account disabled by `bin/sgnl-user-suspend`; the login server's disable ends refresh/offline tokens | ✅🧪 |
 | App tokens (auth-app, for the suspend script and WebDAV tools) bypass the login server; blocked by the account disable | ✅🧪 |
 | Server-side encryption | Not worth it (keys on the same box). Encrypted backups cover the real risk |
+| Only tokens issued for OpenCloud (`PROXY_OIDC_AUDIENCES=opencloud`, `config/deploy.opencloud.yml`), so a login token for another app (the MCP gateway's) is refused here | ✅ 2026-11-24 |
 
 ## 6b. Forgejo
 
@@ -268,8 +271,8 @@ login server step is `bin/sgnl-id disable`/`enable`.
 Residual: the login server refuses a disabled person's tokens at once
 (token, introspection and userinfo endpoints), but an app that checks a
 signed access token itself (OpenCloud's clients get JWTs) may accept
-one until it expires (≤ 1 h, Authelia's default; was 5 min on
-Keycloak).
+one until it expires (≤ 5 min, `lifespans.access_token`; the MCP
+login's 1 h tokens are refused by the apps, which check the audience).
 
 ## 6d. Dashy (home.sgnl)
 
@@ -280,6 +283,39 @@ Keycloak).
 | Config editing in the UI disabled; config read-only mount from git | ✅ |
 | Group filtering is client-side only (tiles are hints; apps enforce access) | ℹ️ by design |
 | Pinned 4.7.0 (4.8.x churned four patch releases in a week); Dashy's server still logs an update check at start | ✅ · ℹ️ |
+
+## 6e. MCP gateway (AI apps)
+
+`sgnl-mcp` at `mcp.sgnl` (`config/deploy.mcp.yml`; `ARCHITECTURE.md`,
+"AI apps"): one MCP endpoint through which AI apps (Claude Code,
+claude.ai, Codex) read and write a person's mail, calendar, contacts
+and files. It acts as that person, so the main threats are a stolen
+token and an AI app doing something the person didn't want, e.g.
+because a mail it read told it to (prompt injection).
+
+| Control | Status |
+| --- | --- |
+| Login only through the login server (password + passkey), one public PKCE client per AI app (`sgnl-mcp-claude-code`, `sgnl-mcp-claude-ai`, `sgnl-mcp-codex`), policy `sgnl_apps`. Login tokens carry audience `sgnl-mcp`: good at the gateway only | ✅ |
+| Who: `SGNL_MCP_ALLOW_GROUPS=sgnl_users`, checked against the login server's current view on every login token (not only the token's claims), so disabling an account (`bin/sgnl-id disable`, `bin/sgnl-user-suspend`) cuts the AI apps off at once | ✅ |
+| The login token is never forwarded. The gateway exchanges it (RFC 8693, its own confidential client `sgnl-mcp`, may only exchange) for a 5-minute token for one app: audience `stalwart-webui` for mail, `opencloud` for files. The exchange also applies that app's policy | ✅ |
+| The apps refuse tokens not issued for them: OpenCloud (§6) and Stalwart's JWTs (§3). So a token leaked from one app, or a login token copied from an AI app, works nowhere else | ✅ 2026-11-24 |
+| Login lifetimes (lifespan `mcp_login`): access token 1 h, refresh 14 days idle, 30 days at most, then password + passkey again. 1 h only because of the audience checks above | ✅ |
+| **Prompt injection**: sending mail and saving into shared spaces need the person's yes in a confirmation dialog shown by the AI app (MCP elicitation: Accept/Decline, waits up to 10 min). Declined: nothing happens | ✅ |
+| Only AI apps whose dialog really reaches the person may do those actions: `SGNL_MCP_CONFIRM_CLIENTS` = Claude Code and claude.ai. **Codex is excluded**: in its no-approval mode it answers the dialog itself (tested 2026-11-25), so with Codex sending and sharing are refused | ✅🧪 |
+| Bcc sends refused for now | ✅ |
+| No state on disk; secret only in the container env (`SGNL_MCP_CLIENT_SECRET`); the login server holds just its hash | ✅ |
+| Monitoring: alert `McpGatewayDown` (container missing 5 min); `/health` is liveness only | ✅ |
+
+Residual:
+- **Opaque tokens have no audience check.** Webmail and Stalwart's web
+  UI get opaque tokens, which Stalwart checks through the login
+  server's userinfo endpoint, without an audience check (Stalwart's
+  design). Only JWTs are bound to `stalwart-webui`.
+- claude.ai keeps its users' tokens on Anthropic's servers; anyone who
+  connects it trusts that.
+- Reading is not confirmed: an AI app the person connected can read
+  all their mail and files. A confirmation only guards sending and
+  shared spaces.
 
 ## 7. Login server (identity)
 
@@ -301,7 +337,7 @@ and every app's settings stayed the same.
 | Per-client access via authorization policies: `sgnl_apps` denies anyone without `sgnl_users`, `sgnl_forgejo` also needs `forgejo_users`; Stripe (SAML) also needs `sgnl_users` | ✅ |
 | PKCE S256 required on every client except Forgejo and listmonk (confidential, PKCE optional); consent implicit except the Stalwart web UI and the OpenCloud desktop/mobile apps (asked once, kept 1 year); no self-registration, no password grant | ✅ |
 | Brute force (`regulation`): 3 failures / 2 min → 30 min lockout, same error as a wrong password (no oracle) | ✅ |
-| Sessions 8 h idle / 7 days max, no remember-me; access tokens 1 h (default); offline tokens only for clients that ask (`offline_access`) | ✅ |
+| Sessions 8 h idle / 7 days max, no remember-me; access tokens 5 min (MCP logins 1 h, apps refuse them); refresh tokens 8 h idle, 30 days for the OpenCloud apps and webmail; offline tokens only for clients that ask (`offline_access`) | ✅ |
 | Stripe sends signed SAML requests but publishes no certificate: their signatures are ignored for Stripe only (as Keycloak did); this also ignores `ForceAuthn` for Stripe. Read buffer 16 KB (Stripe's URL + cookies exceed 4 KB) | ℹ️ by design |
 | Agent access through client `sgnl-agent` (client credentials, secret in Vaultwarden, hash on the server) with scopes `authelia.admin.read`/`.write` and the admin API as audience: it can manage people and groups, not settings or clients. The admin API is on the public issuer path; it refuses anything but such a token | ✅ |
 | Invites without secrets: set-up link to a personal address, user only in `sgnl_invited` (no app) until `bin/sgnl-id finish-invite` | ✅ |

@@ -47,6 +47,7 @@ no Kubernetes, nothing clever where something simple works.
 | 🧑‍💻 | Forgejo | Git repositories, issues, pull requests |
 | 📣 | listmonk | Mailing lists and campaigns, sent through Amazon SES |
 | 🏠 | Dashy | A start page with every app, per person |
+| 🤖 | MCP gateway ([sgnl-mcp](https://github.com/igorski89/sgnl-mcp)) | Lets AI apps (Claude, Codex) read and write your mail, calendar, contacts and files, with your own login |
 | 📈 | Grafana + VictoriaMetrics | Monitoring, logs and alerts |
 | 💾 | restic → Cloudflare R2 | Nightly encrypted backups, with restore drills |
 
@@ -55,22 +56,27 @@ no Kubernetes, nothing clever where something simple works.
 ```mermaid
 flowchart LR
   people(["You and your team<br/>browser, phone, mail apps"])
+  ai(["AI apps<br/>Claude, Codex"])
   world(["Mail from and to<br/>the outside world"])
   subgraph server["One server, deployed with Kamal"]
     login["Login<br/>Authelia"]
     apps["Mail, files, office,<br/>passwords, git, start page"]
+    mcp["MCP gateway"]
     mon["Monitoring<br/>Grafana"]
   end
   people --> login --> apps
+  ai -->|"your login"| mcp --> apps
   login --> mon
   world <-->|"Amazon SES"| apps
   server -->|"nightly, encrypted"| backup[("Backups<br/>Cloudflare R2")]
 ```
 
 Everyone signs in once, with a passkey, and every app trusts that
-login. Mail goes in and out through Amazon SES, so a message is stored
-safely even while the server is down. Every night the data goes,
-encrypted, to off-site storage.
+login. AI apps reach mail and files through the MCP gateway, with the
+same login; before one sends mail or saves into a shared space, you
+confirm it in a dialog. Mail goes in and out through Amazon SES, so a message is
+stored safely even while the server is down. Every night the data
+goes, encrypted, to off-site storage.
 
 ## Make it yours
 

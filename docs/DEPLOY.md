@@ -380,6 +380,63 @@ dashboard "Logs" has lines; non-admins don't see that org. Break-glass admin:
 `/login?disableAutoLogin=true`, user `admin`, Vaultwarden
 `example-sgnl-grafana-admin-password`.
 
+## 6c. MCP gateway (AI apps)
+
+One MCP endpoint over mail and files for AI clients:
+`https://mcp.sgnl.example.com/mcp` (service `sgnl-mcp`,
+`config/deploy.mcp.yml`; design in `ARCHITECTURE.md`, "AI apps"). Needs
+the login server (§1), Stalwart with `stalwart/plan-oidc.ndjson` (§2)
+and OpenCloud (§6).
+
+```bash
+bin/sgnl-dns add mcp                        # A mcp.sgnl -> VPS, DNS only (DNS.md)
+# clients sgnl-mcp-claude-code, sgnl-mcp-claude-ai, sgnl-mcp-codex and the
+# gateway's own sgnl-mcp are in id/configuration.yml (bin/sgnl-deploy id)
+bin/sgnl-deploy mcp
+```
+
+- Image: `docker/mcp/Dockerfile`, a one-line `FROM` of a pinned
+  `ghcr.io/igorski89/sgnl-mcp` release (github.com/igorski89/sgnl-mcp).
+  To upgrade: bump the tag, `bin/sgnl-deploy mcp`.
+- Secret: the gateway's client secret, vault item
+  `keycloak-sgnl-mcp-client-secret`, reaches the container as
+  `SGNL_MCP_CLIENT_SECRET` and the login server as a hash
+  (`.kamal/secrets`). Its client may only exchange tokens (RFC 8693),
+  for audiences `sgnl-mcp`, `opencloud` and `stalwart-webui`.
+- The apps must refuse tokens not issued for them, or a login token
+  copied from the gateway would work there too: OpenCloud
+  `PROXY_OIDC_AUDIENCES=opencloud` (`config/deploy.opencloud.yml`),
+  Stalwart `acceptedAudiences: stalwart-webui` in
+  `stalwart/plan-oidc.ndjson` (`bin/stalwart-apply
+  stalwart/plan-oidc.ndjson`, then the Action `ReloadSettings`).
+- Login clients: Claude Code on loopback port 47621, Codex on 47622,
+  claude.ai with the callback `https://claude.ai/api/mcp/auth_callback`.
+  Their logins: access token 1 h, refresh 14 days idle and 30 days at
+  most (lifespan `mcp_login`), then password + passkey again. Exchanged
+  tokens: 5 minutes.
+- Settings (`config/deploy.mcp.yml`): `SGNL_MCP_ALLOW_GROUPS` (who may
+  use it: `sgnl_users`) and `SGNL_MCP_CONFIRM_CLIENTS` (the AI apps
+  that may send mail or save into shared spaces after a confirmation
+  dialog: Claude Code and claude.ai, not Codex; `SECURITY.md` §6e).
+- One container, no state: nothing to back up. A deploy drops open MCP
+  sessions and any open confirmation dialog; clients reconnect by
+  themselves. The proxy doesn't buffer and waits up to 900 s for a
+  response, since a send dialog may wait 10 minutes for the person.
+- Health: `/health` (liveness only: it doesn't check the apps). Alert
+  `McpGatewayDown` (`monitoring/vmalert/rules/containers.yml`) when the
+  container is missing for 5 minutes.
+
+**Adding a person**: nothing beyond `sgnl_users`, which everyone gets at
+`finish-invite` (`USERS.md`). Tell them the address
+`https://mcp.sgnl.example.com/mcp` and the server name `sgnl-<instance>`;
+the set-up per AI app is in the gateway's user guide
+(github.com/igorski89/sgnl-mcp, `docs/user-guide.md`, "Getting
+started"). Turning someone off: disable their account (`bin/sgnl-id
+disable`), which ends their AI app logins too.
+
+Checks: `curl -s https://mcp.sgnl.example.com/health` answers; Claude
+Code logs in through the login server and lists your mail.
+
 ## 7. Sanity pass
 
 - [ ] All subdomains show valid Let's Encrypt certs; `mail.sgnl`'s
