@@ -131,7 +131,7 @@ identity_providers:
       # the admin API.
       - client_id: 'sgnl-agent'
         client_name: 'SGNL agent (automation)'
-        client_secret: '$plaintext${{ env "SGNL_ID_AGENT_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_AGENT_CLIENT_SECRET_HASH_B64" | b64dec }}'
         grant_types: ['client_credentials']
         response_types: []
         redirect_uris: []
@@ -143,7 +143,7 @@ identity_providers:
       # MCP gateway's clients come after the switch-over).
       - client_id: 'vaultwarden'
         client_name: 'Vaultwarden (vault.{{SGNL_APPS_DOMAIN}})'
-        client_secret: '$plaintext${{ env "SGNL_ID_VAULTWARDEN_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_VAULTWARDEN_CLIENT_SECRET_HASH_B64" | b64dec }}'
         redirect_uris:
           - 'https://vault.{{SGNL_APPS_DOMAIN}}/identity/connect/oidc-signin'
         scopes: ['openid', 'email', 'profile']
@@ -157,7 +157,7 @@ identity_providers:
       # Bulwark sends its secret in the body; stays logged in (offline_access) without a consent screen (fork option).
       - client_id: 'bulwark'
         client_name: 'Webmail (inbox.{{SGNL_APPS_DOMAIN}})'
-        client_secret: '$plaintext${{ env "SGNL_ID_BULWARK_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_BULWARK_CLIENT_SECRET_HASH_B64" | b64dec }}'
         redirect_uris:
           - 'https://inbox.{{SGNL_APPS_DOMAIN}}/en/auth/callback'
           - 'https://inbox.{{SGNL_APPS_DOMAIN}}/fr/auth/callback'
@@ -214,7 +214,7 @@ identity_providers:
         pre_configured_consent_duration: '1y'
       - client_id: 'forgejo'
         client_name: 'Git (git.{{SGNL_APPS_DOMAIN}})'
-        client_secret: '$plaintext${{ env "SGNL_ID_FORGEJO_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_FORGEJO_CLIENT_SECRET_HASH_B64" | b64dec }}'
         redirect_uris:
           - 'https://git.{{SGNL_APPS_DOMAIN}}/user/oauth2/authelia/callback'
         scopes: ['openid', 'email', 'profile', 'groups']
@@ -302,7 +302,7 @@ identity_providers:
         consent_mode: 'implicit'
       - client_id: 'grafana'
         client_name: 'Monitoring (monitor.{{SGNL_APPS_DOMAIN}})'
-        client_secret: '$plaintext${{ env "SGNL_ID_GRAFANA_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_GRAFANA_CLIENT_SECRET_HASH_B64" | b64dec }}'
         redirect_uris:
           - 'https://monitor.{{SGNL_APPS_DOMAIN}}/login/generic_oauth'
         scopes: ['openid', 'email', 'profile', 'groups']
@@ -315,7 +315,7 @@ identity_providers:
         consent_mode: 'implicit'
       - client_id: 'listmonk'
         client_name: 'Campaigns (listmonk.{{SGNL_APPS_DOMAIN}})'
-        client_secret: '$plaintext${{ env "SGNL_ID_LISTMONK_CLIENT_SECRET" }}'
+        client_secret: '{{ env "SGNL_ID_LISTMONK_CLIENT_SECRET_HASH_B64" | b64dec }}'
         redirect_uris:
           - 'https://listmonk.{{SGNL_APPS_DOMAIN}}/auth/oidc'
         scopes: ['openid', 'email', 'profile', 'groups']
