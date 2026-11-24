@@ -119,8 +119,11 @@ identity_providers:
           refresh_token: '30d'
         # The MCP login (Claude Code): idle 14 days, at most 30 days
         # (2026-11-24), then password + passkey again.
+        # Access 15m: Claude Code refreshes whenever 5 minutes or less are
+        # left (its MCP log), so a 5m token was refreshed before every
+        # request. 15m clears that window with margin (2026-11-24).
         mcp_login:
-          access_token: '5m'
+          access_token: '15m'
           refresh_token: '14d'
           refresh_token_maximum: '30d'
         mcp_exchange:
