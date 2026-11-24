@@ -158,6 +158,12 @@ identity_providers:
         rules:
           - policy: 'two_factor'
             subject: 'group:sgnl_users'
+      # MCP gateway: only people switched on (group mcp_users).
+      sgnl_mcp:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject: [['group:sgnl_users', 'group:mcp_users']]
       sgnl_forgejo:
         default_policy: 'deny'
         rules:
@@ -392,15 +398,15 @@ identity_providers:
         audience: ['sgnl-mcp']
         requested_audience_mode: 'implicit'
         # Claude Code names the gateway's URL as the resource (RFC 8707, as
-        # the MCP spec asks); the local gateway until it's deployed (M3).
-        resource: ['http://localhost:8765/mcp']
+        # the MCP spec asks): the hosted gateway (M3) and the local one (dev).
+        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp', 'http://localhost:8765/mcp']
         # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
         # exchange the token.
         implicit_audience_with_resource: true
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
-        authorization_policy: 'sgnl_apps'
+        authorization_policy: 'sgnl_mcp'
         # Only the gateway may exchange this client's tokens.
         subject_token_clients_supported: ['sgnl-mcp']
       # The gateway itself: no login of its own; trades a person's token
@@ -423,5 +429,5 @@ identity_providers:
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'
-        authorization_policy: 'sgnl_apps'
+        authorization_policy: 'sgnl_mcp'
 ...

@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 source lib/instance.sh
 
 STOP_FIRST=" forgejo stalwart listmonk "   # second container can't open the same store / would double-send
-ORDER=(monitoring opencloud vaultwarden id listmonk forgejo stalwart)
+ORDER=(monitoring opencloud vaultwarden id mcp listmonk forgejo stalwart)
 LOGS=$HOME/.cache/sgnl/deploy
 
 stop_flag=""

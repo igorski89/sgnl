@@ -1,0 +1,52 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# MCP gateway (sgnl-mcp): one MCP endpoint over SGNL's apps for AI clients
+# (Claude, Codex) at https://mcp.<apps>/mcp. People log in with their SGNL
+# account (login server clients sgnl-mcp-claude-code etc.); the gateway trades
+# that login for a short-lived token per app (mail, files) and never forwards
+# it. Only group mcp_users gets in (checked against the login server's
+# current view on every login token). No state: nothing to back up; a deploy
+# drops open MCP sessions and confirmation dialogs (clients reconnect).
+#
+#   bin/sgnl-deploy mcp
+service: sgnl-mcp
+image: sgnl-mcp
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-mcp
+      memory: 256m
+proxy:
+  host: mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  ssl: true
+  app_port: 8765
+  healthcheck:
+    path: /health
+  # MCP streams (POST + long-lived GET/SSE): no buffering, no early cut-off.
+  response_timeout: 300
+  buffering:
+    requests: false
+    responses: false
+registry:
+  server: localhost:5555
+retain_containers: 2
+builder:
+  arch: amd64
+  dockerfile: docker/mcp/Dockerfile
+  context: docker/mcp
+env:
+  secret:
+    - SGNL_MCP_CLIENT_SECRET
+  clear:
+    SGNL_MCP_LABEL: "SGNL - <%= ENV.fetch("SGNL_DOMAIN") %>"
+    SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
+    SGNL_MCP_ISSUER: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
+    SGNL_MCP_JMAP_URL: "https://mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/jmap/session"
+    SGNL_MCP_OPENCLOUD_URL: "https://drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    SGNL_MCP_TZ: <%= ENV.fetch("SGNL_TZ") %>
+    SGNL_MCP_INTERNAL_DOMAINS: <%= ENV.fetch("SGNL_DOMAIN") %>
+    SGNL_MCP_ALLOW_GROUPS: mcp_users
+    SGNL_MCP_MAIL_AUDIENCE: stalwart-webui
+    SGNL_MCP_FILES_AUDIENCE: opencloud
+    SGNL_MCP_SESSION_IDLE: 1h
