@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""People and groups in the login server, Authelia (our fork), through its
+admin API (<issuer>/api/admin) as the agent's client `sgnl-agent`
+(client credentials; scopes authelia.admin.read + .write; audience
+<issuer>/api/admin). Successor of bin/sgnl-kc (Keycloak); same commands.
+See docs/USERS.md.
+
+  bin/sgnl-id list
+  bin/sgnl-id show <user>
+  bin/sgnl-id add-user <user> "<First Last>" [<email>]   # email default <user>@<domain>
+  bin/sgnl-id add-to-group <user> <group>...
+  bin/sgnl-id remove-from-group <user> <group>...
+  bin/sgnl-id setup-email <user> [hours]   # email a set-up link: password + passkey (default 24 h)
+  bin/sgnl-id invite <user> "<First Last>" <personal-email> [hours]   # default 72 h
+  bin/sgnl-id finish-invite <user> <group>...   # after they set password + passkey
+  bin/sgnl-id disable <user> | enable <user>  # disable also ends every session and token
+  bin/sgnl-id logout <user>                # ends all of that person's sessions and tokens
+  bin/sgnl-id events [<user>] [max]        # recent login attempts
+  bin/sgnl-id audit [<user>] [max]         # recent admin changes
+
+Invite: a new person can't read <user>@ before they can log in, so the
+set-up link goes to a personal address. Until finish-invite they're only
+in sgnl_invited: they can finish their set-up in the login portal but
+reach no app (every app needs sgnl_users). finish-invite sets
+<user>@<domain> and swaps sgnl_invited for the given groups (sgnl_users is
+always added). finish-invite, group changes, disable and enable then run
+bin/sgnl-vault-sync, if the instance has vaultwarden/org.yaml.
+
+Which server: production (https://id.<apps>/realms/<realm>, vault item
+id-agent-client-secret) by default; the TEST instance with SGNL_ID_TEST=1
+(https://auth.<apps>/realms/<realm>, authelia-agent-client-secret).
+"""
+import base64, json, os, subprocess, sys, urllib.error, urllib.parse, urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402
+I = instance.load()
+TEST = os.environ.get("SGNL_ID_TEST") == "1"
+HOST = ("auth." if TEST else "id.") + I["SGNL_APPS_DOMAIN"]
+ISSUER = f"https://{HOST}/realms/{I['SGNL_REALM']}"
+ADMIN = f"{ISSUER}/api/admin"
+DOMAIN = I["SGNL_DOMAIN"]
+SECRET_ITEM = "authelia-agent-client-secret" if TEST else "id-agent-client-secret"
+
+
+def secret(name):
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-secret"), name], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("sgnl-id: " + r.stderr.strip())
+    return r.stdout.strip()
+
+
+def request(method, url, body=None, form=None, headers=None, ok404=False):
+    h = {"Accept": "application/json", **(headers or {})}
+    data = None
+    if body is not None:
+        data, h["Content-Type"] = json.dumps(body).encode(), "application/json"
+    if form is not None:
+        data, h["Content-Type"] = urllib.parse.urlencode(form).encode(), "application/x-www-form-urlencoded"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=h, method=method)) as r:
+            raw = r.read()
+            return r.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        if ok404 and e.code == 404:
+            return 404, None
+        msg = e.read().decode()[:300]
+        try:
+            j = json.loads(msg)
+            msg = j.get("error_description") or j.get("message") or msg
+        except Exception:
+            pass
+        sys.exit(f"sgnl-id: {method} {url.replace(ISSUER, '')} -> HTTP {e.code} {msg}")
+
+
+_token = None
+def api(method, path, body=None, ok404=False, **params):
+    global _token
+    if _token is None:
+        basic = base64.b64encode(f"sgnl-agent:{secret(SECRET_ITEM)}".encode()).decode()
+        _, t = request("POST", f"{ISSUER}/api/oidc/token", headers={"Authorization": "Basic " + basic},
+                       form={"grant_type": "client_credentials", "scope": "authelia.admin.read authelia.admin.write",
+                             "audience": ADMIN})
+        _token = t["access_token"]
+    q = ("?" + urllib.parse.urlencode(params)) if params else ""
+    return request(method, f"{ADMIN}{path}{q}", body=body, headers={"Authorization": "Bearer " + _token}, ok404=ok404)
+
+
+def u(name):
+    return urllib.parse.quote(name, safe="")
+
+
+def user(name):
+    st, d = api("GET", f"/users/{u(name)}", ok404=True)
+    if st == 404:
+        sys.exit(f"sgnl-id: no user {name}")
+    return d
+
+
+def all_users():
+    out, page = [], 0   # pages count from 0
+    while True:
+        _, d = api("GET", "/users", limit="100", page=str(page))
+        batch = d.get("users", []) if isinstance(d, dict) else (d or [])
+        out += batch
+        if len(batch) < 100:
+            return out
+        page += 1
+
+
+def groups():
+    _, d = api("GET", "/groups")
+    lst = d.get("groups", d) if isinstance(d, dict) else d
+    return {g["name"] for g in (lst or [])}
+
+
+def group_members(group):
+    """[{username, email, enabled}] of a group (bin/sgnl-vault-sync uses it)."""
+    _, d = api("GET", f"/groups/{u(group)}/members")
+    lst = d.get("members", d.get("users", d)) if isinstance(d, dict) else d
+    return [{"username": m["username"], "email": m.get("email"), "enabled": not m.get("disabled")} for m in (lst or [])]
+
+
+def set_groups(name, add=(), remove=()):
+    known = groups()
+    for g in (*add, *remove):
+        if g not in known:
+            sys.exit(f"sgnl-id: no group {g} (create it first: groups are config, see docs/USERS.md)")
+    for g in add:
+        api("PUT", f"/users/{u(name)}/groups/{u(g)}")
+    for g in remove:
+        api("DELETE", f"/users/{u(name)}/groups/{u(g)}", ok404=True)
+
+
+def vault_sync():
+    """Vaultwarden members/groups follow the login server (bin/sgnl-vault-sync),
+    if the instance has an organisation config. A failure only warns."""
+    if TEST or not os.path.exists(os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")):
+        return
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-vault-sync")], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode:
+        print(f"warning: Vaultwarden not synced ({out.splitlines()[-1] if out else 'failed'}); run bin/sgnl-vault-sync", file=sys.stderr)
+
+
+def invite(name, hours):
+    _, d = api("POST", f"/users/{u(name)}/invite", {"lifespan": f"{hours}h"})
+    print(f"set-up link emailed to {d.get('email')} (valid until {d.get('expires_at')}): set password, register a passkey")
+
+
+def add_user(name, full, email, extra_groups=()):
+    first, _, last = full.partition(" ")
+    body = {"username": name, "email": email, "display_name": full, "given_name": first, "family_name": last}
+    if extra_groups:
+        body["groups"] = list(extra_groups)
+    api("POST", "/users", body)
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip()); return
+    cmd, a = argv[0], argv[1:]
+    if cmd == "list":
+        for x in sorted(all_users(), key=lambda x: x["username"]):
+            flags = "  [DISABLED]" if x.get("disabled") else ""
+            print(f'{x["username"]}\t{x.get("email", "")}\t{x.get("display_name", "")}\t{",".join(sorted(x.get("groups") or []))}{flags}')
+    elif cmd == "show" and len(a) == 1:
+        x = user(a[0])
+        out = {k: x.get(k) for k in ("username", "email", "display_name", "disabled", "groups", "credentials", "sessions",
+                                     "created_at", "updated_at")}
+        out["enabled"] = not x.get("disabled")      # as bin/sgnl-kc show (bin/sgnl-user-suspend reads it)
+        out["groups"] = sorted(out.get("groups") or [])
+        out["credentials"] = sorted(out.get("credentials") or [])
+        out["sessions"] = out.get("sessions") or 0
+        print(json.dumps(out, indent=2))
+    elif cmd == "add-user" and len(a) in (2, 3):
+        email = a[2] if len(a) == 3 else f"{a[0]}@{DOMAIN}"
+        add_user(a[0], a[1], email)
+        print(f"created {a[0]} ({email}); no password yet (setup-email)")
+    elif cmd in ("add-to-group", "remove-from-group") and len(a) >= 2:
+        set_groups(a[0], **{"add" if cmd == "add-to-group" else "remove": a[1:]})
+        print(f"{a[0]}: {','.join(sorted(user(a[0]).get('groups') or []))}")
+        vault_sync()
+    elif cmd == "setup-email" and len(a) in (1, 2):
+        user(a[0]); invite(a[0], int(a[1]) if len(a) == 2 else 24)
+    elif cmd == "invite" and len(a) in (3, 4):
+        add_user(a[0], a[1], a[2], extra_groups=["sgnl_invited"])
+        print(f"created {a[0]} ({a[2]}, invited)")
+        invite(a[0], int(a[3]) if len(a) == 4 else 72)
+    elif cmd == "finish-invite" and len(a) >= 1:
+        x = user(a[0])
+        creds = set(x.get("credentials") or [])
+        if not {"password", "webauthn"} <= creds:
+            sys.exit(f"sgnl-id: {a[0]} hasn't finished set-up yet (credentials: {sorted(creds) or 'none'})")
+        email = f"{a[0]}@{DOMAIN}"
+        api("PATCH", f"/users/{u(a[0])}", {"email": email})
+        set_groups(a[0], add=["sgnl_users", *[g for g in a[1:] if g != "sgnl_users"]], remove=["sgnl_invited"])
+        print(f"{a[0]}: email {email}, groups {','.join(sorted(user(a[0]).get('groups') or []))}")
+        vault_sync()
+    elif cmd in ("disable", "enable") and len(a) == 1:
+        api("PATCH", f"/users/{u(a[0])}", {"disabled": cmd == "disable"})
+        print(f"{a[0]}: {cmd}d" + (" (every session and token ended)" if cmd == "disable" else " (they log in again)"))
+        vault_sync()
+    elif cmd == "logout" and len(a) == 1:
+        api("POST", f"/users/{u(a[0])}/logout", {})
+        print(f"{a[0]}: all sessions and tokens ended")
+    elif cmd in ("events", "audit") and len(a) <= 2:
+        params = {"limit": a[1] if len(a) == 2 else "20"}
+        if a:
+            params["username"] = a[0]
+        _, d = api("GET", f"/{cmd}", **params)
+        rows = d.get(cmd, d.get("entries", d)) if isinstance(d, dict) else d
+        for e in rows or []:
+            print("  ".join(str(e.get(k, "")) for k in (("time", "username", "type", "successful", "remote_ip") if cmd == "events"
+                                                          else ("time", "actor", "action", "username", "fields"))))
+    else:
+        sys.exit(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
