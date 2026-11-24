@@ -3,7 +3,7 @@
 # (Claude, Codex) at https://mcp.<apps>/mcp. People log in with their SGNL
 # account (login server clients sgnl-mcp-claude-code etc.); the gateway trades
 # that login for a short-lived token per app (mail, files) and never forwards
-# it. Only group mcp_users gets in (checked against the login server's
+# it. Everyone in sgnl_users gets in (checked against the login server's
 # current view on every login token). No state: nothing to back up; a deploy
 # drops open MCP sessions and confirmation dialogs (clients reconnect).
 #
@@ -47,10 +47,13 @@ env:
     SGNL_MCP_OPENCLOUD_URL: "https://drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
     SGNL_MCP_TZ: <%= ENV.fetch("SGNL_TZ") %>
     SGNL_MCP_INTERNAL_DOMAINS: <%= ENV.fetch("SGNL_DOMAIN") %>
-    SGNL_MCP_ALLOW_GROUPS: mcp_users
+    # Everyone with an SGNL account (2026-11-25); turning someone off
+    # = disabling their account.
+    SGNL_MCP_ALLOW_GROUPS: sgnl_users
     SGNL_MCP_MAIL_AUDIENCE: stalwart-webui
     SGNL_MCP_FILES_AUDIENCE: opencloud
     SGNL_MCP_SESSION_IDLE: 1h
     # AI apps trusted to show the send/share confirmation to the person;
     # any other client (Codex until tested) can't send or share.
-    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai
+    # TEMPORARY: sgnl-mcp-codex only for its auto-accept test (2026-11-25).
+    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai,sgnl-mcp-codex

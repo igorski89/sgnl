@@ -160,12 +160,6 @@ identity_providers:
         rules:
           - policy: 'two_factor'
             subject: 'group:sgnl_users'
-      # MCP gateway: only people switched on (group mcp_users).
-      sgnl_mcp:
-        default_policy: 'deny'
-        rules:
-          - policy: 'two_factor'
-            subject: [['group:sgnl_users', 'group:mcp_users']]
       sgnl_forgejo:
         default_policy: 'deny'
         rules:
@@ -408,7 +402,7 @@ identity_providers:
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
-        authorization_policy: 'sgnl_mcp'
+        authorization_policy: 'sgnl_apps'
         # Only the gateway may exchange this client's tokens.
         subject_token_clients_supported: ['sgnl-mcp']
       # claude.ai custom connector ("use your own OAuth client"; also Claude
@@ -433,7 +427,7 @@ identity_providers:
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
-        authorization_policy: 'sgnl_mcp'
+        authorization_policy: 'sgnl_apps'
         # Only the gateway may exchange this client's tokens.
         subject_token_clients_supported: ['sgnl-mcp']
       # Codex CLI: fixed client, loopback callback on port 47622.
@@ -458,7 +452,7 @@ identity_providers:
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
-        authorization_policy: 'sgnl_mcp'
+        authorization_policy: 'sgnl_apps'
         # Only the gateway may exchange this client's tokens.
         subject_token_clients_supported: ['sgnl-mcp']
       # The gateway itself: no login of its own; trades a person's token
@@ -481,5 +475,5 @@ identity_providers:
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'
-        authorization_policy: 'sgnl_mcp'
+        authorization_policy: 'sgnl_apps'
 ...
