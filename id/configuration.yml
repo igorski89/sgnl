@@ -411,8 +411,6 @@ identity_providers:
         authorization_policy: 'sgnl_mcp'
         # Only the gateway may exchange this client's tokens.
         subject_token_clients_supported: ['sgnl-mcp']
-      # The gateway itself: no login of its own; trades a person's token
-      # for a short-lived one it calls the apps with (token exchange only).
       # claude.ai custom connector ("use your own OAuth client"; also Claude
       # Desktop and the phone apps). Tokens live on Anthropic's servers.
       - client_id: 'sgnl-mcp-claude-ai'
