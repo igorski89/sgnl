@@ -378,6 +378,9 @@ identity_providers:
         response_types: ['code']
         audience: ['sgnl-mcp']
         requested_audience_mode: 'implicit'
+        # Claude Code names the gateway's URL as the resource (RFC 8707, as
+        # the MCP spec asks); the local gateway until it's deployed (M3).
+        resource: ['http://localhost:8765/mcp']
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
