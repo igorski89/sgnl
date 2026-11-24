@@ -8,11 +8,11 @@
 #   1. Adds the <user> mailbox to instance/stalwart/mailboxes.ndjson and applies the plan
 #      (the mailbox exists before their first login, so mail to them
 #      arrives from day one).
-#   2. bin/sgnl-kc invite: Keycloak user <user>, email = the personal
+#   2. bin/sgnl-id invite: Keycloak user <user>, email = the personal
 #      address, group sgnl_invited only; set-up email (password + passkey,
 #      valid 72 h) to that personal address.
 # Afterwards, once they've set password + passkey:
-#   bin/sgnl-kc finish-invite <user> [admins developers forgejo_users ...]
+#   bin/sgnl-id finish-invite <user> [admins developers forgejo_users ...]
 # which switches the email to <user>@example.com and opens the apps.
 # It does not commit: review the diff and commit yourself.
 set -euo pipefail
@@ -26,7 +26,7 @@ user=${1:-}; name=${2:-}; personal=${3:-}
 DOMAIN=$SGNL_DOMAIN
 PLAN=$SGNL_INSTANCE_DIR/stalwart/mailboxes.ndjson
 
-bin/sgnl-kc list | cut -f1 | grep -qx "$user" && { echo "$user already exists in Keycloak" >&2; exit 1; }
+bin/sgnl-id list | cut -f1 | grep -qx "$user" && { echo "$user already exists in the login server" >&2; exit 1; }
 
 echo "1/2 Stalwart mailbox"
 if grep -q "\"value\":{\"${user}\":" "$PLAN"; then
@@ -46,12 +46,12 @@ fi
 bin/stalwart-apply | tail -1
 
 echo "2/2 Keycloak invite"
-bin/sgnl-kc invite "$user" "$name" "$personal"
+bin/sgnl-id invite "$user" "$name" "$personal"
 
 cat <<EOF
 
 Done: $user (mailbox $user@$DOMAIN). Tell them on another channel to expect
 an email from "Secrétariat Général" at $personal, and to say when they're
-done. Then: bin/sgnl-kc finish-invite $user [groups...]
+done. Then: bin/sgnl-id finish-invite $user [groups...]
 Commit $PLAN. Their first steps: docs/USERS.md "Onboarding - the person's side".
 EOF

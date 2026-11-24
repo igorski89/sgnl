@@ -91,8 +91,8 @@ sections:
     icon: fas fa-user-shield
     items:
       - title: Password, passkeys, sessions
-        description: Your SGNL account (Keycloak)
-        url: https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/account
+        description: Your SGNL account
+        url: https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/settings
         icon: fas fa-fingerprint
       - title: Mail app passwords
         description: One per device for iOS/macOS Mail, Thunderbird
@@ -150,8 +150,3 @@ sections:
         url: https://office.{{SGNL_APPS_DOMAIN}}/hosting/discovery
         icon: fas fa-file-word
         statusCheckUrl: https://office.{{SGNL_APPS_DOMAIN}}/hosting/discovery
-      - title: Keycloak admin
-        description: "Break-glass admin console (master realm)"
-        url: https://id.{{SGNL_APPS_DOMAIN}}/admin/master/console/#/{{SGNL_REALM}}
-        icon: fas fa-key
-        statusCheckUrl: https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}

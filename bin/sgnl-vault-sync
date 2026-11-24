@@ -32,7 +32,8 @@ bwsession.ensure()
 I = instance.load()
 VAULT = f"https://vault.{I['SGNL_APPS_DOMAIN']}"
 CONFIG = os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")
-kc = importlib.machinery.SourceFileLoader("sgnl_kc", os.path.join(ROOT, "bin", "sgnl-kc")).load_module()
+_l = importlib.machinery.SourceFileLoader("sgnl_id", os.path.join(ROOT, "bin", "sgnl-id"))
+_s = importlib.util.spec_from_loader("sgnl_id", _l); idp = importlib.util.module_from_spec(_s); _l.exec_module(idp)
 
 # org.yaml permission -> Bitwarden collection access flags
 PERMS = {"view": (True, False, False), "view-hidden": (True, True, False),
@@ -95,14 +96,15 @@ def load_config():
 
 
 def keycloak_members(groups):
-    """{vw group: [kc users]}, users as dicts (id, email, enabled, username)."""
-    ids = kc.group_ids()
+    """{vw group: [users]}, users as dicts (email, enabled, username), from
+    the login server (Authelia's admin API, bin/sgnl-id). The name is
+    historical."""
+    known = idp.groups()
     out = {}
-    for vw_group, kc_group in groups.items():
-        if kc_group not in ids:
-            fail(f"Keycloak has no group {kc_group!r}")
-        _, members, _ = kc.api("GET", f"/groups/{ids[kc_group]}/members", max="1000", briefRepresentation="true")
-        out[vw_group] = [m for m in members if m.get("email")]
+    for vw_group, idp_group in groups.items():
+        if idp_group not in known:
+            fail(f"the login server has no group {idp_group!r}")
+        out[vw_group] = [m for m in idp.group_members(idp_group) if m.get("email")]
     return out
 
 
