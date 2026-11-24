@@ -277,7 +277,8 @@ accessories:
       - "/etc/machine-id:/etc/machine-id:ro"
       - "sgnl_vector_data:/var/lib/vector"
     options:
-      memory: 256m
+      # 256m ran at ~90% (2026-11-24).
+      memory: 384m
 
   vmalert-logs:
     service: sgnl-vmalert-logs

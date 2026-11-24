@@ -49,6 +49,7 @@ KNOWN = {
     "listmonk-postgres-password":      ("SGNL listmonk Postgres", f"https://listmonk.{S}", "listmonk database password."),
     "listmonk-admin-password":         ("SGNL listmonk local admin", f"https://listmonk.{S}", "Break-glass super admin; everyday login is the login server (SSO)."),
     "listmonk-api-token":              ("SGNL listmonk API token", f"https://listmonk.{S}", "API user listmonk_api (listmonk -> Users). Used by the agent for listmonk's API."),
+    "keycloak-sgnl-mcp-client-secret": ("SGNL login client: MCP gateway", f"https://id.{S}", "Token-exchange client sgnl-mcp (instance/mcp/run-local.sh)."),
     "keycloak-listmonk-client-secret": ("SGNL login client: listmonk", f"https://listmonk.{S}", "OIDC client secret (login server; the name is from the Keycloak days)."),
     "vaultwarden-org-client-id":       ("SGNL Vaultwarden organisation API client ID", f"https://vault.{S}", "Organisation API key (Admin Console -> Settings -> Organisation info). Members and groups sync from Keycloak."),
     "vaultwarden-org-client-secret":   ("SGNL Vaultwarden organisation API secret", f"https://vault.{S}", "Organisation API key; can be rotated in the Admin Console."),
@@ -62,7 +63,7 @@ KNOWN = {
 # Names of removed apps' secrets, never exported if they still exist somewhere.
 RETIRED = {
     "keycloak-bootstrap-admin-password", "keycloak-postgres-password",
-    "keycloak-sgnl-agent-client-secret", "keycloak-sgnl-mcp-client-secret",  # Keycloak removed 2026-11-24
+    "keycloak-sgnl-agent-client-secret",  # Keycloak removed 2026-11-24
     "authelia-jwt-secret", "authelia-session-secret", "authelia-storage-encryption-key",
     "lldap-admin-password", "lldap-authelia-password", "lldap-jwt-secret", "lldap-key-seed",
     "nextcloud-admin-password", "nextcloud-oidc-client-secret", "nextcloud-postgres-password",
