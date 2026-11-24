@@ -1,0 +1,64 @@
+<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+# PRODUCTION login server: Authelia (our fork) on id.<apps>, replacing
+# Keycloak (instance/docs/PLAN-authelia-fork.md).
+#
+# !!! Deploying this IS the switch-over: kamal-proxy then sends
+# id.<apps>/realms/<realm>/* to Authelia, while Keycloak stays the host's
+# root service (and owns the TLS certificate) until it is removed (M6).
+# Follow the cutover runbook (instance/docs/RUNBOOK-authelia-cutover.md);
+# never `bin/sgnl-deploy --all` it (it isn't in its ORDER).
+# Rollback: `docker exec kamal-proxy kamal-proxy remove sgnl-id-web` sends
+# the path back to Keycloak at once.
+#
+# One container, SQLite in the volume sgnl_id_data (backed up, paused copy).
+# id/configuration.yml is uploaded to /opt/sgnl/id by
+# .kamal/hooks/pre-app-boot; secrets are environment variables.
+service: sgnl-id
+image: sgnl-id
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-id
+proxy:
+  # Only the issuer path; the host's root (and TLS) belong to Keycloak,
+  # later to a placeholder.
+  host: id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+  path_prefix: /realms/<%= ENV.fetch("SGNL_REALM") %>
+  strip_path_prefix: false
+  app_port: 9091
+  healthcheck:
+    path: /realms/<%= ENV.fetch("SGNL_REALM") %>/api/health
+registry:
+  server: localhost:5555
+retain_containers: 2
+builder:
+  arch: amd64
+  dockerfile: docker/id/Dockerfile
+  context: docker/id
+volumes:
+  - "sgnl_id_data:/data"
+  - "/opt/sgnl/id/configuration.yml:/config/configuration.yml:ro"
+env:
+  secret:
+    - AUTHELIA_SESSION_SECRET:ID_SESSION_SECRET
+    - AUTHELIA_STORAGE_ENCRYPTION_KEY:ID_STORAGE_ENCRYPTION_KEY
+    - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:ID_RESET_PASSWORD_JWT_SECRET
+    - AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET:ID_OIDC_HMAC_SECRET
+    - AUTHELIA_NOTIFIER_SMTP_USERNAME:AWS_SES_SMTP_USERNAME
+    - AUTHELIA_NOTIFIER_SMTP_PASSWORD:AWS_SES_SMTP_PASSWORD
+    # Used inside the config through its template filter.
+    - SGNL_ID_OIDC_JWK_B64
+    - SGNL_ID_SAML_KEY_B64
+    - SGNL_ID_SAML_CERT_B64
+    - SGNL_ID_AGENT_CLIENT_SECRET
+    # The apps' existing client secrets (unchanged from Keycloak).
+    - SGNL_ID_VAULTWARDEN_CLIENT_SECRET:KEYCLOAK_VAULTWARDEN_CLIENT_SECRET
+    - SGNL_ID_BULWARK_CLIENT_SECRET:KEYCLOAK_BULWARK_CLIENT_SECRET
+    - SGNL_ID_FORGEJO_CLIENT_SECRET:KEYCLOAK_FORGEJO_CLIENT_SECRET
+    - SGNL_ID_GRAFANA_CLIENT_SECRET:KEYCLOAK_GRAFANA_CLIENT_SECRET
+    - SGNL_ID_LISTMONK_CLIENT_SECRET:KEYCLOAK_LISTMONK_CLIENT_SECRET
+  clear:
+    X_AUTHELIA_CONFIG_FILTERS: template
+    TZ: <%= ENV.fetch("SGNL_TZ") %>

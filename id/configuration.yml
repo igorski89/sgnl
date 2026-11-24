@@ -1,0 +1,310 @@
+# Authelia (our fork) - PRODUCTION login server for SGNL, replacing Keycloak
+# (instance/docs/PLAN-authelia-fork.md). Served ONLY under the issuer path
+# https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}} (config/deploy.id.yml), so the
+# issuer, the passkeys' RP ID and every app's settings stay as they are.
+# Deploying it IS the switch-over: follow the cutover runbook.
+#
+# Instance values (SGNL_* placeholders) are filled by bin/sgnl-render before
+# upload. The env "..." calls are Authelia's template filter
+# (X_AUTHELIA_CONFIG_FILTERS=template; it also parses comments: no braces in
+# comments): secrets come from the container's environment (vault, via
+# .kamal/secrets), never from this file. App client secrets are the ones the
+# apps already use (keycloak-<app>-client-secret), so no app changes.
+#
+# Settings mirror keycloak/realm.yaml: password + passkey (second factor),
+# login by username or email, sessions 8 h idle / 7 days, no remember-me,
+# 3 failures in 2 min -> 30 min lockout, passwords >= 12 characters, every
+# app needs group sgnl_users (Forgejo also forgejo_users), Stripe over SAML.
+---
+theme: 'auto'
+
+server:
+  address: 'tcp://:9091/realms/{{SGNL_REALM}}'
+
+log:
+  level: 'info'
+
+totp:
+  disable: true
+
+webauthn:
+  display_name: '{{SGNL_ORG_NAME}}'
+
+authentication_backend:
+  database:
+    search:
+      email: true
+  password_change:
+    disable: false
+  password_reset:
+    disable: false
+
+password_policy:
+  standard:
+    enabled: true
+    min_length: 12
+
+# No forward-auth: apps use OIDC/SAML and carry their own policy. Authelia
+# needs a non-deny default to offer the second-factor settings page.
+access_control:
+  default_policy: 'two_factor'
+
+session:
+  cookies:
+    - domain: 'id.{{SGNL_APPS_DOMAIN}}'
+      authelia_url: 'https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}'
+      inactivity: '8h'
+      expiration: '7d'
+      # No remember-me, as on Keycloak.
+      remember_me: -1
+
+regulation:
+  max_retries: 3
+  find_time: '2m'
+  ban_time: '30m'
+
+storage:
+  local:
+    path: '/data/db.sqlite3'
+
+notifier:
+  smtp:
+    address: 'submission://{{SGNL_SMTP_HOST}}:587'
+    sender: '{{SGNL_ORG_NAME}} <auth@{{SGNL_DOMAIN}}>'
+
+identity_providers:
+  # Stripe over SAML. The key and certificate are Keycloak's realm RS256
+  # pair (Stripe stores that certificate), from the vault at cutover.
+  saml:
+    key: {{ env "SGNL_ID_SAML_KEY_B64" | b64dec | mindent 8 "|" | msquote }}
+    certificate_chain: {{ env "SGNL_ID_SAML_CERT_B64" | b64dec | mindent 8 "|" | msquote }}
+    enable_keycloak_endpoints: true
+    service_providers:
+      - entity_id: 'https://dashboard.stripe.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://dashboard.stripe.com/login/saml/consume']
+        name_id_format: 'email'
+        authorization_policy: 'two_factor'
+        groups: ['sgnl_users']
+  oidc:
+    jwks:
+      - key: {{ env "SGNL_ID_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
+    cors:
+      endpoints: ['token', 'revocation', 'introspection', 'userinfo']
+      allowed_origins_from_client_redirect_uris: true
+    # Keycloak puts groups, email, name and username in every token; apps
+    # rely on it (Grafana's role, Forgejo's admin, OpenCloud's role).
+    default_claims_policy: 'keycloak_like'
+    claims_policies:
+      keycloak_like:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+        access_token: ['email', 'email_verified', 'preferred_username', 'groups']
+    authorization_policies:
+      sgnl_apps:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject: 'group:sgnl_users'
+      sgnl_forgejo:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject: [['group:sgnl_users', 'group:forgejo_users']]
+    clients:
+      # The agent (bin/sgnl-kc's successor): client credentials only, for
+      # the admin API.
+      - client_id: 'sgnl-agent'
+        client_name: 'SGNL agent (automation)'
+        client_secret: '$plaintext${{ env "SGNL_ID_AGENT_CLIENT_SECRET" }}'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read', 'authelia.admin.write']
+        audience: ['https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
+      # The apps (generated from keycloak/realm.yaml + the login matrix; the
+      # MCP gateway's clients come after the switch-over).
+      - client_id: 'vaultwarden'
+        client_name: 'Vaultwarden (vault.{{SGNL_APPS_DOMAIN}})'
+        client_secret: '$plaintext${{ env "SGNL_ID_VAULTWARDEN_CLIENT_SECRET" }}'
+        redirect_uris:
+          - 'https://vault.{{SGNL_APPS_DOMAIN}}/identity/connect/oidc-signin'
+        scopes: ['openid', 'email', 'profile']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+      # Bulwark sends its secret in the body; stays logged in (offline_access) without a consent screen (fork option).
+      - client_id: 'bulwark'
+        client_name: 'Webmail (inbox.{{SGNL_APPS_DOMAIN}})'
+        client_secret: '$plaintext${{ env "SGNL_ID_BULWARK_CLIENT_SECRET" }}'
+        redirect_uris:
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/en/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/fr/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/de/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/es/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/it/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/pt/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/nl/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/pl/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ru/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/uk/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/cs/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/sk/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/tr/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ar/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/he/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/mn/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ja/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ko/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/zh/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/zh-TW/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/da/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/nb/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/hu/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ro/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/lv/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/fa/auth/callback'
+          - 'https://inbox.{{SGNL_APPS_DOMAIN}}/ca/auth/callback'
+        scopes: ['openid', 'email', 'profile', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_post'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+        consent_implicit_offline_access: true
+      # Sends RFC 8707 resource=<its own URL>; asks for a fresh login (password confirmation at consent).
+      - client_id: 'stalwart-webui'
+        client_name: 'Mail account (mail.{{SGNL_APPS_DOMAIN}})'
+        public: true
+        redirect_uris:
+          - 'https://mail.{{SGNL_APPS_DOMAIN}}/account/oauth/callback'
+          - 'https://mail.{{SGNL_APPS_DOMAIN}}/admin/oauth/callback'
+        resource: ['https://mail.{{SGNL_APPS_DOMAIN}}']
+        scopes: ['openid', 'email', 'profile', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'forgejo'
+        client_name: 'Git (git.{{SGNL_APPS_DOMAIN}})'
+        client_secret: '$plaintext${{ env "SGNL_ID_FORGEJO_CLIENT_SECRET" }}'
+        redirect_uris:
+          - 'https://git.{{SGNL_APPS_DOMAIN}}/user/oauth2/authelia/callback'
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'sgnl_forgejo'
+        consent_mode: 'implicit'
+      - client_id: 'opencloud'
+        client_name: 'Files (drive.{{SGNL_APPS_DOMAIN}})'
+        public: true
+        redirect_uris:
+          - 'https://drive.{{SGNL_APPS_DOMAIN}}/'
+          - 'https://drive.{{SGNL_APPS_DOMAIN}}/oidc-callback.html'
+          - 'https://drive.{{SGNL_APPS_DOMAIN}}/oidc-silent-redirect.html'
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+      # The app sends http://127.0.0.1:<port> (any port allowed for this form only).
+      - client_id: 'opencloud-desktop'
+        client_name: 'Files desktop app'
+        public: true
+        redirect_uris:
+          - 'http://127.0.0.1'
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'opencloud-ios'
+        client_name: 'Files iOS app'
+        public: true
+        redirect_uris:
+          - 'oc://ios.opencloud.eu'
+          - 'oc.ios://ios.opencloud.eu'
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'opencloud-android'
+        client_name: 'Files Android app'
+        public: true
+        redirect_uris:
+          - 'oc://android.opencloud.eu'
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'dashy'
+        client_name: 'Home (home.{{SGNL_APPS_DOMAIN}})'
+        public: true
+        redirect_uris:
+          - 'https://home.{{SGNL_APPS_DOMAIN}}'
+          - 'https://home.{{SGNL_APPS_DOMAIN}}/'
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+      - client_id: 'grafana'
+        client_name: 'Monitoring (monitor.{{SGNL_APPS_DOMAIN}})'
+        client_secret: '$plaintext${{ env "SGNL_ID_GRAFANA_CLIENT_SECRET" }}'
+        redirect_uris:
+          - 'https://monitor.{{SGNL_APPS_DOMAIN}}/login/generic_oauth'
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+      - client_id: 'listmonk'
+        client_name: 'Campaigns (listmonk.{{SGNL_APPS_DOMAIN}})'
+        client_secret: '$plaintext${{ env "SGNL_ID_LISTMONK_CLIENT_SECRET" }}'
+        redirect_uris:
+          - 'https://listmonk.{{SGNL_APPS_DOMAIN}}/auth/oidc'
+        scopes: ['openid', 'email', 'profile', 'groups']
+        grant_types: ['authorization_code']
+        response_types: ['code']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'implicit'
+...

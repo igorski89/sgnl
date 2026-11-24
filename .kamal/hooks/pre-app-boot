@@ -15,6 +15,10 @@ case "${KAMAL_SERVICE:-}" in
   sgnl-stalwart)
     src=stalwart dest=stalwart dir_mode=755 world_readable=1
     files=(config.json) ;;
+  sgnl-id)
+    # Production login server (Authelia); no secrets in the file.
+    src=id dest=id dir_mode=755 world_readable=1
+    files=(configuration.yml) ;;
   sgnl-authelia)
     # Runs as root; no secrets in the file (they're environment variables).
     src=authelia dest=authelia dir_mode=755 world_readable=1
