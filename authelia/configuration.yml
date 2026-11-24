@@ -81,6 +81,11 @@ identity_providers:
         name_id_format: 'email'
         authorization_policy: 'two_factor'
         groups: ['sgnl_users']
+        # Stripe signs its requests but publishes no signing certificate
+        # (Keycloak never checked). Don't verify them (fork sgnl.11+); this
+        # also ignores ForceAuthn for Stripe (which never sends it), so a
+        # forged one can't end anyone's session.
+        request_signature: 'ignore'
   oidc:
     jwks:
       - key: {{ env "SGNL_AUTHELIA_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
