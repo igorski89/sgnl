@@ -119,11 +119,13 @@ identity_providers:
           refresh_token: '30d'
         # The MCP login (Claude Code): idle 14 days, at most 30 days
         # (2026-11-24), then password + passkey again.
-        # Access 15m: Claude Code refreshes whenever 5 minutes or less are
-        # left (its MCP log), so a 5m token was refreshed before every
-        # request. 15m clears that window with margin (2026-11-24).
+        # Access 1h (M3 stage 5): Claude Code refreshes whenever 5 minutes or
+        # less are left (its MCP log), so 5m meant a refresh per request.
+        # 1h only since OpenCloud and Stalwart refuse tokens not issued for
+        # them (aud_check 6/6, 2026-11-24): a copied login token works only
+        # at the gateway, which checks with the login server on every token.
         mcp_login:
-          access_token: '15m'
+          access_token: '1h'
           refresh_token: '14d'
           refresh_token_maximum: '30d'
         mcp_exchange:
@@ -400,6 +402,58 @@ identity_providers:
         # Claude Code names the gateway's URL as the resource (RFC 8707, as
         # the MCP spec asks): the hosted gateway (M3) and the local one (dev).
         resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp', 'http://localhost:8765/mcp']
+        # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
+        # exchange the token.
+        implicit_audience_with_resource: true
+        access_token_signed_response_alg: 'RS256'
+        claims_policy: 'mcp'
+        lifespan: 'mcp_login'
+        authorization_policy: 'sgnl_mcp'
+        # Only the gateway may exchange this client's tokens.
+        subject_token_clients_supported: ['sgnl-mcp']
+      # The gateway itself: no login of its own; trades a person's token
+      # for a short-lived one it calls the apps with (token exchange only).
+      # claude.ai custom connector ("use your own OAuth client"; also Claude
+      # Desktop and the phone apps). Tokens live on Anthropic's servers.
+      - client_id: 'sgnl-mcp-claude-ai'
+        client_name: 'Claude (claude.ai, Desktop, phone)'
+        public: true
+        token_endpoint_auth_method: 'none'
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        redirect_uris:
+          - 'https://claude.ai/api/mcp/auth_callback'
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        audience: ['sgnl-mcp']
+        requested_audience_mode: 'implicit'
+        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
+        # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
+        # exchange the token.
+        implicit_audience_with_resource: true
+        access_token_signed_response_alg: 'RS256'
+        claims_policy: 'mcp'
+        lifespan: 'mcp_login'
+        authorization_policy: 'sgnl_mcp'
+        # Only the gateway may exchange this client's tokens.
+        subject_token_clients_supported: ['sgnl-mcp']
+      # Codex CLI: fixed client, loopback callback on port 47622.
+      - client_id: 'sgnl-mcp-codex'
+        client_name: 'Codex (SGNL MCP)'
+        public: true
+        token_endpoint_auth_method: 'none'
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        redirect_uris:
+          - 'http://127.0.0.1:47622/callback'
+          - 'http://localhost:47622/callback'
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        audience: ['sgnl-mcp']
+        requested_audience_mode: 'implicit'
+        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
         # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
         # exchange the token.
         implicit_audience_with_resource: true
