@@ -25,7 +25,11 @@ proxy:
   # Only the issuer path; the host's root (and TLS) belong to Keycloak,
   # later to a placeholder.
   host: id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
-  path_prefix: /realms/<%= ENV.fetch("SGNL_REALM") %>
+  # Also RFC 8414's path-inserted metadata address, which sits outside the
+  # issuer path: Keycloak (the root) would answer it with its own
+  # endpoints; Authelia answers 404, so clients (Stalwart) fall back to
+  # <issuer>/.well-known/openid-configuration.
+  path_prefix: /realms/<%= ENV.fetch("SGNL_REALM") %>,/.well-known/oauth-authorization-server/realms/<%= ENV.fetch("SGNL_REALM") %>
   strip_path_prefix: false
   # The route has no TLS of its own (path-only), so kamal-proxy's default
   # would pass the client's own X-Forwarded-For through, and Authelia takes
