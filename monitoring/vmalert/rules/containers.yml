@@ -30,3 +30,13 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.job }} ({{ $labels.instance }}) /metrics not reachable for 3 minutes"
+
+      # The login server (sgnl-id): every app's login depends on it.
+      # absent() also fires when the container is gone, which TargetDown
+      # can't see (a vanished target has no `up` series at all).
+      - alert: LoginServerDown
+        expr: absent(up{service="sgnl-id"} == 1)
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "The login server (sgnl-id) has not answered for 3 minutes: nobody can log in to the apps"
