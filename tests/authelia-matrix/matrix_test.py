@@ -92,6 +92,14 @@ def authelia_login(page, user):
     page.wait_for_load_state("load")
     if "/consent/" in page.url:
         page.wait_for_timeout(1000)
+        # An app that asks for a fresh login (prompt=login / max_age, e.g.
+        # Stalwart's web UI) gets a password confirmation on this page.
+        pw = page.locator("input[type=password]:visible")
+        if pw.count():
+            pw.first.fill(USERS[user])
+            page.get_by_role("button", name=re.compile("submit", re.I)).click()
+            page.wait_for_timeout(3000)
+            return "ok"
         rem = page.get_by_role("checkbox")
         if rem.count() and not rem.first.is_checked():
             rem.first.check()

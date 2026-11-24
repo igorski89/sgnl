@@ -107,8 +107,10 @@ def run(user="matrix-user"):
             if page.url.startswith(f"https://auth.{m.APPS_DOMAIN}"):
                 try:
                     m.authelia_login(page, user)
-                except Exception:
-                    pass
+                except Exception as e:
+                    page.screenshot(path=os.path.join(m.SHOTS, "native-stalwart-webui.png"))
+                    print(f"  .. webui login step: {type(e).__name__}: {str(e)[:150]} (at {page.url[:90]})", flush=True)
+                    break
             elif seen and "/login" not in page.url:
                 break
         try:   # past the callback, into the account pages
@@ -119,7 +121,7 @@ def run(user="matrix-user"):
         page.screenshot(path=os.path.join(m.SHOTS, "native-stalwart-webui.png"))
         text = page.inner_text("body")
         on_account = page.url.startswith(f"https://mail-next.{m.APPS_DOMAIN}/account") and not re.search(r"/account/(login|oauth)", page.url)
-        signed_in = re.search(r"sign out|log ?out|password|app passwords|security", text, re.I) is not None and "Enter your account name" not in text
+        signed_in = re.search(r"Mailboxes|Sieve Scripts|Vacation Response|sign out|log ?out", text, re.I) is not None and "Enter your account name" not in text
         ok = bool(seen) and on_account and signed_in
         if seen and not ok:
             rq = urllib.parse.parse_qs(urllib.parse.urlparse(seen[0]).query)
