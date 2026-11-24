@@ -377,6 +377,19 @@ identity_providers:
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
+      # The MCP gateway's admin tools (M4, /admin/mcp): client credentials
+      # for the admin API, READ ONLY until the change tools exist and are
+      # reviewed. The gateway checks the person's current groups (admins).
+      - client_id: 'sgnl-mcp-admin'
+        client_name: 'SGNL MCP gateway (admin tools, read-only)'
+        client_secret: '{{ env "SGNL_ID_MCP_ADMIN_CLIENT_SECRET_HASH_B64" | b64dec }}'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read']
+        audience: ['https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
       # MCP gateway (instance/docs/PLAN-mcp.md). Claude Code logs in here
       # (PKCE, loopback); its token is for the gateway (aud sgnl-mcp) only.
       - client_id: 'sgnl-mcp-claude-code'
