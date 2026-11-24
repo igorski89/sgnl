@@ -76,6 +76,9 @@ env:
     OC_OIDC_ISSUER: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
     OC_EXCLUDE_RUN_SERVICES: "idp"
     PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD: "jwt"
+    # Only tokens issued for OpenCloud (aud opencloud: its own clients and the
+    # MCP gateway's per-app tokens; M3, 2026-11-24). Undo: remove the line.
+    PROXY_OIDC_AUDIENCES: "opencloud"
     PROXY_OIDC_REWRITE_WELLKNOWN: "true"
     PROXY_AUTOPROVISION_ACCOUNTS: "true"
     PROXY_AUTOPROVISION_CLAIM_USERNAME: "preferred_username"
