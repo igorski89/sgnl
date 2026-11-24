@@ -381,6 +381,9 @@ identity_providers:
         # Claude Code names the gateway's URL as the resource (RFC 8707, as
         # the MCP spec asks); the local gateway until it's deployed (M3).
         resource: ['http://localhost:8765/mcp']
+        # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
+        # exchange the token.
+        implicit_audience_with_resource: true
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
