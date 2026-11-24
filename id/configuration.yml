@@ -274,6 +274,10 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
+        # Tokens carry aud opencloud; OpenCloud enforces it
+        # (PROXY_OIDC_AUDIENCES, M3), so other tokens are refused there.
+        audience: ['opencloud']
+        requested_audience_mode: 'implicit'
         access_token_signed_response_alg: 'RS256'
         authorization_policy: 'sgnl_apps'
         consent_mode: 'implicit'
@@ -289,6 +293,8 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
+        audience: ['opencloud']
+        requested_audience_mode: 'implicit'
         access_token_signed_response_alg: 'RS256'
         lifespan: 'stay_signed_in'
         authorization_policy: 'sgnl_apps'
@@ -306,6 +312,8 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
+        audience: ['opencloud']
+        requested_audience_mode: 'implicit'
         access_token_signed_response_alg: 'RS256'
         lifespan: 'stay_signed_in'
         authorization_policy: 'sgnl_apps'
@@ -322,6 +330,8 @@ identity_providers:
         require_pkce: true
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
+        audience: ['opencloud']
+        requested_audience_mode: 'implicit'
         access_token_signed_response_alg: 'RS256'
         lifespan: 'stay_signed_in'
         authorization_policy: 'sgnl_apps'
@@ -407,7 +417,9 @@ identity_providers:
         request_token_types_supported: ['urn:ietf:params:oauth:token-type:access_token']
         impersonation_allowed: true
         consent_mode: 'implicit'
-        audience: ['sgnl-mcp']
+        # Per-app tokens (M3): the gateway asks for audience=<app client id>;
+        # the exchange then also enforces that app's policy.
+        audience: ['sgnl-mcp', 'opencloud', 'stalwart-webui']
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'
