@@ -270,6 +270,9 @@ identity_providers:
         client_name: 'Stalwart web UI (test)'
         public: true
         redirect_uris: ['https://mail-next.{{SGNL_APPS_DOMAIN}}/account/oauth/callback', 'https://mail-next.{{SGNL_APPS_DOMAIN}}/admin/oauth/callback']
+        # Stalwart's web UI sends RFC 8707 resource=<its own URL> (exact, no
+        # trailing slash); Keycloak ignored it, Authelia only allows listed ones.
+        resource: ['https://mail-next.{{SGNL_APPS_DOMAIN}}']
         scopes: ['openid', 'email', 'profile', 'offline_access']
         grant_types: ['authorization_code', 'refresh_token']
         response_types: ['code']
