@@ -48,12 +48,12 @@ builder:
   context: docker/id
 volumes:
   - "sgnl_id_data:/data"
+  - "/opt/sgnl/id/configuration.yml:/config/configuration.yml:ro"
 
 # Scraped by vmagent (monitoring/vmagent/scrape.yml.erb); alerts in
 # monitoring/vmalert/rules/containers.yml (LoginServerDown).
 labels:
   metrics.port: "9959"
-  - "/opt/sgnl/id/configuration.yml:/config/configuration.yml:ro"
 env:
   secret:
     - AUTHELIA_SESSION_SECRET:ID_SESSION_SECRET
