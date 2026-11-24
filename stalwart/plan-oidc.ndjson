@@ -29,10 +29,16 @@
 # - The recovery admin (STALWART_RECOVERY_ADMIN) keeps working, and is
 #   how bin/stalwart-relay-app-password impersonates the relay account.
 #
+# Token audience (M3, 2026-11-24): JWT access tokens must carry aud
+# stalwart-webui (the MCP gateway's per-app tokens); others are refused
+# outright (no fallback to userinfo). Opaque tokens (Bulwark, the web UI)
+# go through userinfo with no audience check (Stalwart's design), so this
+# only affects JWTs. Apply, then Action ReloadSettings (no restart).
+#
 # Accounts must already exist (stalwart/plan.ndjson): an OIDC directory
 # can't resolve recipients for people who have never logged in.
 
-{"@type":"upsert","object":"Directory","matchOn":["description"],"value":{"authelia":{"@type":"Oidc","description":"authelia","issuerUrl":"https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}","claimUsername":"preferred_username","usernameDomain":"{{SGNL_DOMAIN}}","acceptedAudiences":{},"skipAudienceValidation":true,"allowIdTokenClaims":false,"lenientIssuerMatch":false,"allowInvalidCerts":false,"opaqueTokenValidation":"userInfo","unscopedTokens":"interoperable","claimName":"name"}}}
+{"@type":"upsert","object":"Directory","matchOn":["description"],"value":{"authelia":{"@type":"Oidc","description":"authelia","issuerUrl":"https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}","claimUsername":"preferred_username","usernameDomain":"{{SGNL_DOMAIN}}","acceptedAudiences":{"stalwart-webui":true},"skipAudienceValidation":false,"allowIdTokenClaims":false,"lenientIssuerMatch":false,"allowInvalidCerts":false,"opaqueTokenValidation":"userInfo","unscopedTokens":"interoperable","claimName":"name"}}}
 {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","directoryId":null}}}
 {"@type":"update","object":"Authentication","value":{"directoryId":"#authelia"}}
 # Stalwart web UI (/account, /admin) logs in through Keycloak as public
