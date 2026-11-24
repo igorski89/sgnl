@@ -23,8 +23,9 @@ proxy:
   app_port: 8765
   healthcheck:
     path: /health
-  # MCP streams (POST + long-lived GET/SSE): no buffering, no early cut-off.
-  response_timeout: 300
+  # MCP streams (POST + long-lived GET/SSE): no buffering, no early cut-off;
+  # a send dialog may wait up to 10 minutes for the person.
+  response_timeout: 900
   buffering:
     requests: false
     responses: false
