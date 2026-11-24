@@ -5,4 +5,4 @@
 # bump deliberately (docs/DEPLOY.md §5a). Same layout as upstream's image
 # (WORKDIR /listmonk, port 9000) plus the sqlite3 CLI that
 # bin/sgnl-listmonk-setup and the restore drill use.
-FROM ghcr.io/igorski89/listmonk:v7.0.0-beta.2-sqlite.7
+FROM ghcr.io/igorski89/listmonk:v7.0.0-beta.2-sqlite.8
