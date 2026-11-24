@@ -51,3 +51,6 @@ env:
     SGNL_MCP_MAIL_AUDIENCE: stalwart-webui
     SGNL_MCP_FILES_AUDIENCE: opencloud
     SGNL_MCP_SESSION_IDLE: 1h
+    # AI apps trusted to show the send/share confirmation to the person;
+    # any other client (Codex until tested) can't send or share.
+    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai
