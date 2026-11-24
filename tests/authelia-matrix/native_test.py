@@ -93,6 +93,38 @@ def run(user="matrix-user"):
             ok = bool(tok.get("refresh_token")) and st2 == 200 and "sgnl_users" in (at.get("groups") or [])
             results.append((client, redirect, ok, f"refresh_token={'yes' if tok.get('refresh_token') else 'NO'} refresh_works={st2 == 200} "
                             f"jwt_access_token={'yes' if at else 'NO'} groups={at.get('groups')} consent_seen={consent}"))
+        # Stalwart's own web UI (account pages): account name, then SSO.
+        page.goto(f"https://mail-next.{m.APPS_DOMAIN}/account")
+        seen = []
+        page.on("request", lambda r: seen.append(r.url) if "/api/oidc/authorization" in r.url and "client_id=stalwart-webui" in r.url else None)
+        try:
+            page.get_by_role("textbox").first.fill(f"{user}@{os.environ['DOMAIN']}")
+            page.get_by_role("button", name=re.compile("continue", re.I)).click()
+        except Exception as e:
+            print(f"  .. webui: {e}", flush=True)
+        for _ in range(20):
+            page.wait_for_timeout(800)
+            if page.url.startswith(f"https://auth.{m.APPS_DOMAIN}"):
+                try:
+                    m.authelia_login(page, user)
+                except Exception:
+                    pass
+            elif seen and "/login" not in page.url:
+                break
+        try:   # past the callback, into the account pages
+            page.wait_for_url(re.compile(r"/account(?!/(login|oauth))"), timeout=20000)
+        except Exception:
+            pass
+        page.wait_for_timeout(3000)
+        page.screenshot(path=os.path.join(m.SHOTS, "native-stalwart-webui.png"))
+        text = page.inner_text("body")
+        on_account = page.url.startswith(f"https://mail-next.{m.APPS_DOMAIN}/account") and not re.search(r"/account/(login|oauth)", page.url)
+        signed_in = re.search(r"sign out|log ?out|password|app passwords|security", text, re.I) is not None and "Enter your account name" not in text
+        ok = bool(seen) and on_account and signed_in
+        if seen and not ok:
+            rq = urllib.parse.parse_qs(urllib.parse.urlparse(seen[0]).query)
+            print(f"  .. webui authorize params: resource={rq.get('resource')} scope={rq.get('scope')} redirect={rq.get('redirect_uri')}", flush=True)
+        results.append(("stalwart-webui", "/account (web UI)", ok, f"sso_used={bool(seen)} page={page.url.split(m.APPS_DOMAIN)[-1][:30]} signed_in={signed_in}"))
         b.close()
     for c, r, ok, d in results:
         print(f"{'PASS' if ok else 'FAIL'}  {c:<18} {r:<32} {d}", flush=True)
