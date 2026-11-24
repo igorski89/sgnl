@@ -10,6 +10,8 @@ See docs/USERS.md.
   bin/sgnl-id add-user <user> "<First Last>" [<email>]   # email default <user>@<domain>
   bin/sgnl-id add-to-group <user> <group>...
   bin/sgnl-id remove-from-group <user> <group>...
+  bin/sgnl-id groups                       # all groups
+  bin/sgnl-id create-group <group>         # a new, empty group
   bin/sgnl-id setup-email <user> [hours]   # email a set-up link: password + passkey (default 24 h)
   bin/sgnl-id invite <user> "<First Last>" <personal-email> [hours]   # default 72 h
   bin/sgnl-id finish-invite <user> <group>...   # after they set password + passkey
@@ -126,7 +128,7 @@ def set_groups(name, add=(), remove=()):
     known = groups()
     for g in (*add, *remove):
         if g not in known:
-            sys.exit(f"sgnl-id: no group {g} (create it first: groups are config, see docs/USERS.md)")
+            sys.exit(f"sgnl-id: no group {g} (create it first: bin/sgnl-id create-group {g})")
     for g in add:
         api("PUT", f"/users/{u(name)}/groups/{u(g)}")
     for g in remove:
@@ -202,6 +204,13 @@ def main(argv):
         api("PATCH", f"/users/{u(a[0])}", {"disabled": cmd == "disable"})
         print(f"{a[0]}: {cmd}d" + (" (every session and token ended)" if cmd == "disable" else " (they log in again)"))
         vault_sync()
+    elif cmd == "groups" and not a:
+        print("\n".join(sorted(groups())))
+    elif cmd == "create-group" and len(a) == 1:
+        if a[0] in groups():
+            sys.exit(f"sgnl-id: group {a[0]} already exists")
+        api("POST", "/groups", {"name": a[0]})
+        print(f"group {a[0]}: created")
     elif cmd == "logout" and len(a) == 1:
         api("POST", f"/users/{u(a[0])}/logout", {})
         print(f"{a[0]}: all sessions and tokens ended")
