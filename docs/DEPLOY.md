@@ -116,8 +116,8 @@ bin/sgnl-deploy id                          # config/deploy.id.yml + id/configur
   groups: `bin/sgnl-id` (`USERS.md`), as the agent's client `sgnl-agent`.
 - Health check: `/realms/example/api/health`. Metrics on :9959
   (label `metrics.port`); alert `LoginServerDown`.
-- Stripe SSO needs a signing key Stripe trusts: `id-saml-key-b64` /
-  `id-saml-cert-b64` (the old Keycloak realm key). A new instance makes
+- Stripe SSO signs with the vault pair `id-saml-key-b64` and
+  `id-saml-cert-b64` (the old Keycloak realm key; Stripe trusts it). A new instance makes
   its own pair and gives Stripe the certificate.
 - **Groups**: a fresh database has none, and `bin/sgnl-id` can't create
   them. Create `sgnl_users`, `forgejo_users`, `admins`, `developers` and
