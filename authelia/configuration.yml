@@ -219,4 +219,63 @@ identity_providers:
         # Keycloak: our fork's option (sgnl.8+), confidential clients only.
         consent_mode: 'implicit'
         consent_implicit_offline_access: true
+      # Native apps (OpenCloud desktop/iOS/Android, as keycloak/realm.yaml):
+      # public clients, PKCE, offline_access. Public clients always see the
+      # consent screen for offline_access (by design): once per device.
+      - client_id: 'opencloud-desktop'
+        client_name: 'OpenCloud desktop (test)'
+        public: true
+        redirect_uris: ['http://127.0.0.1', 'http://localhost']
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'opencloud-ios'
+        client_name: 'OpenCloud iOS (test)'
+        public: true
+        redirect_uris: ['oc://ios.opencloud.eu', 'oc.ios://ios.opencloud.eu']
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      - client_id: 'opencloud-android'
+        client_name: 'OpenCloud Android (test)'
+        public: true
+        redirect_uris: ['oc://android.opencloud.eu']
+        scopes: ['openid', 'email', 'profile', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
+      # Stalwart's own web UI (account + admin pages).
+      - client_id: 'stalwart-webui'
+        client_name: 'Stalwart web UI (test)'
+        public: true
+        redirect_uris: ['https://mail-next.{{SGNL_APPS_DOMAIN}}/account/oauth/callback', 'https://mail-next.{{SGNL_APPS_DOMAIN}}/admin/oauth/callback']
+        scopes: ['openid', 'email', 'profile', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        authorization_policy: 'sgnl_apps'
+        consent_mode: 'pre-configured'
+        pre_configured_consent_duration: '1y'
 ...
