@@ -36,6 +36,6 @@
 {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","directoryId":null}}}
 {"@type":"update","object":"Authentication","value":{"directoryId":"#authelia"}}
 # Stalwart web UI (/account, /admin) logs in through Keycloak as public
-# PKCE client "stalwart-webui" (keycloak/realm.yaml).
+# PKCE client "stalwart-webui" (id/configuration.yml).
 # /account is where people create per-device app passwords for 465/993.
 {"@type":"upsert","object":"Application","matchOn":["description"],"value":{"webui":{"description":"Stalwart Web Interface","oauthClientId":"stalwart-webui"}}}

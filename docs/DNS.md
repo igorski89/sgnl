@@ -33,8 +33,8 @@ connects to `mail.sgnl` directly.
 | A | `home.sgnl` | `<VPS_IP>` | Dashy landing page (created 2026-10-15) |
 | A | `drive.sgnl` | `<VPS_IP>` | OpenCloud (files) |
 | A | `office.sgnl` | `<VPS_IP>` | Collabora Online (office editor for OpenCloud) |
-| A | `id.sgnl` | `<VPS_IP>` | Keycloak: login for every app (created 2026-10-18). `auth.sgnl` (Authelia) was deleted 2026-10-19 |
-| A | `auth.sgnl` | `<VPS_IP>` | Authelia, our fork: TEST deployment for the login matrix (`config/deploy.authelia.yml`; re-created 2026-11-23 with `bin/sgnl-dns`, DNS only). Test hosts `<app>-next.sgnl` come and go with `bin/sgnl-dns add/remove` |
+| A | `id.sgnl` | `<VPS_IP>` | Login server (our Authelia fork since 2026-11-24, Keycloak before): login for every app (created 2026-10-18) |
+| A | `auth.sgnl` | `<VPS_IP>` | Not present (removed 2026-11-24). Only while testing a new fork release on the TEST login server (`config/deploy.authelia.yml`): `bin/sgnl-dns add auth`, DNS only. Test hosts `<app>-next.sgnl` come and go the same way (`bin/sgnl-dns add/remove`) |
 | A | `monitor.sgnl` | `<VPS_IP>` | Grafana (monitoring, `config/deploy.monitoring.yml`; created 2026-10-24, DNS only) |
 | A | `listmonk.sgnl` | `<VPS_IP>` | listmonk (campaigns, `config/deploy.listmonk.yml`; created 2026-11-18 via the Cloudflare API, DNS only) |
 
@@ -74,9 +74,8 @@ Port 80 is kamal-proxy's, so it uses DNS-01. The token as created
 
 - Token name: `example-sgnl-stalwart-dns01` (an Account API token)
 - Permissions: `Zone` → `DNS` → `Edit`
-- Zone resources: **all zones in the Example Co account** (five
-  domains: getmimiai.com, cotenant-insight.com, mimiinsight.com,
-  example.com, mimiinsights.com)
+- Zone resources: **all zones in the Example Co account** (the
+  SGNL domain and the company's other domains)
 - Client IP Address Filtering: **none**
 - No expiry
 

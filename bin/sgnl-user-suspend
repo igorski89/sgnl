@@ -156,7 +156,7 @@ if [[ $mode == resume ]]; then
   cat <<EOF
 
 If this was a suspected compromise, before handing access back:
-  - new password + passkey: remove their credentials in Keycloak, then
+  - new password + passkey: remove their credentials in the login server, then
     bin/sgnl-id setup-email $user (to a mailbox only they control)
   - they delete old mail app passwords (mail.sgnl.../account -> Credentials) and git tokens
     (Forgejo -> Settings -> Applications) and create new ones

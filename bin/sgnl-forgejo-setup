@@ -9,7 +9,7 @@
 # Roles come from groups in the OIDC groups claim, re-applied at every
 # login: admins -> Forgejo site admin, developers -> team Developers in
 # org example. Who may log in at all is Keycloak's flow
-# sgnl-forgejo (group forgejo_users, keycloak/realm.yaml).
+# sgnl-forgejo (group forgejo_users, id/configuration.yml).
 set -euo pipefail
 source "$(dirname "$0")/../lib/instance.sh"
 
@@ -26,7 +26,7 @@ fj() { # run the forgejo CLI in the container; extra stdin passes through
 case ${1:-} in
   auth)
     # Name stays "authelia" although it now points at Keycloak (2026-10-19):
-    # the name is in the callback URL registered in keycloak/realm.yaml,
+    # the name is in the callback URL registered in id/configuration.yml,
     # and users are linked to this source + their `sub` (same ids in
     # Keycloak), so renaming would orphan every account.
     id=$(fj forgejo admin auth list | awk '$2=="authelia"{print $1}')

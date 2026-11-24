@@ -8,9 +8,9 @@ What has been tested locally (2026-10-07): the Stalwart 0.16.25
 bootstrap + `bin/stalwart-apply` flow, the relay/submission policy, the
 auto-ban and how to undo it, the Lambda handler against Stalwart on 465.
 Everything below has since run against the real host (live since
-2026-10-08). The login service was Authelia + lldap until 2026-10-19 and
-is Keycloak since (migration log: `../instance/docs/PLAN-keycloak.md`); this file
-describes the Keycloak setup.
+2026-10-08). The login server was Authelia + lldap until 2026-10-19,
+Keycloak until 2026-11-24, and is our Authelia fork since (service
+`sgnl-id`); this file describes that setup.
 
 ## 0. Prerequisites
 
@@ -35,8 +35,8 @@ name). It refuses uncommitted changes (the image tag must be a real
 commit), stops Forgejo and Stalwart first (they can't run two containers
 on the same data; ~10 s and ~30 s down, incoming mail waits in SES/S3),
 deploys through `bin/sgnl-env`, then checks the app's public health URL.
-`--stop-first <app>` stops any other app first too (Keycloak version
-bumps: a database migration). If a stop-first deploy fails before the
+`--stop-first <app>` stops any other app first too (e.g. an upgrade
+that migrates its data). If a stop-first deploy fails before the
 new version started (build, push, network), it boots the version that ran
 before; if the new version had started, it may have migrated the data, so
 it leaves the app stopped and says what to check (an older version on a
@@ -56,9 +56,9 @@ deploy` still works for anything special.
       project; 50k/day, checked 2026-10-08).
 - [ ] Cloudflare API token per `DNS.md` → Vaultwarden `example-sgnl-cloudflare-api-token`.
 - [ ] Create each secret once: the commented `bin/sgnl-secret --set`
-      lines in `.kamal/secrets` (incl. the Keycloak loops: Postgres,
-      bootstrap admin, client secrets). The file itself holds names only
-      and is tracked.
+      lines in `.kamal/secrets` (incl. the login server's loops: its own
+      secrets, its signing key, the app client secrets). The file itself
+      holds names only and is tracked.
 - [ ] `stalwart-cli` ≥ 2.0 on your PATH (Stalwart 1.x)
       (`brew install stalwartlabs/tap/stalwart-cli`, or the release
       tarball from github.com/stalwartlabs/cli; check the `.sha256`).
@@ -82,31 +82,57 @@ deploy` still works for anything special.
 - [ ] DNS: the **A records** from `DNS.md`. SES verification, DKIM and
       MAIL FROM already exist (2026-10-08). Not MX/SPF/DMARC yet.
 
-## 1. Keycloak (login + users)
+## 1. Login server (login + users)
+
+Our Authelia fork (image pinned in `docker/id/Dockerfile`), service
+`sgnl-id`. On a fresh host, the placeholder first, then the server:
 
 ```bash
-kamal accessory boot postgres -c config/deploy.keycloak.yml   # sgnl-keycloak-postgres
-kamal setup -c config/deploy.keycloak.yml                     # first start creates the schema (~30 s; deploy_timeout 120)
-bin/sgnl-keycloak-apply                                       # realm example from keycloak/realm.yaml
+bin/sgnl-root-placeholder sgnl-id-root id   # owns / of id.sgnl and its TLS certificate
+bin/sgnl-deploy id                          # config/deploy.id.yml + id/configuration.yml
 ```
 
-- The realm (settings, login flows, groups, all app clients, the
-  `sgnl-agent` service account) lives only in `keycloak/realm.yaml`.
-  `bin/sgnl-keycloak-apply` fills its `{{VARS}}` from `.kamal/secrets`
-  and applies it with keycloak-config-cli; it **deletes** clients,
-  groups and flows that aren't in the file. Re-run after every edit.
-- The master realm's `admin` (bootstrap password, Vaultwarden
-  `example-sgnl-keycloak-bootstrap-admin-password`) is break-glass
-  only: `bin/sgnl-kcadm`. Day-to-day people/groups: `bin/sgnl-kc` (the
-  `sgnl-agent` service account).
-- Health check is `/realms/master` (`/health` is on management port 9000).
-- First person: `bin/sgnl-kc add-user alice "Alice Admin"`, groups
-  (`bin/sgnl-kc add-to-group alice sgnl_users admins developers
-  forgejo_users`), then `bin/sgnl-kc setup-email alice 48`: set a password
+- It serves only the issuer path `https://id.sgnl.example.com/realms/example`
+  (a path-only kamal-proxy route, plus the RFC 8414 path
+  `/.well-known/oauth-authorization-server/realms/example`, which answers
+  404 so Stalwart falls back to openid-configuration). kamal-proxy gives
+  TLS only to a host's root service, so a tiny busybox placeholder owns
+  `/` and the certificate; the login server as root would also serve a
+  second login page and issuer at `/`. The route has
+  `forward_headers: false`, so a client can't fake its IP towards the
+  login lockout. This order hasn't been run on an empty host yet (the
+  placeholder was put in front of a running server).
+- Settings, app clients and Stripe's SAML are code: `id/configuration.yml`
+  (instance values filled in by `bin/sgnl-render`, uploaded by
+  `.kamal/hooks/pre-app-boot`; secrets come from `.kamal/secrets`).
+  Apps keep their client secrets (vault names still
+  `keycloak-<app>-client-secret`, from the Keycloak days); the login
+  server only gets PBKDF2 hashes (`bin/sgnl-client-secret-hash`),
+  passed base64 because Kamal's dotenv expands `$`. Re-deploy after
+  every edit.
+- Users, groups, passwords, passkeys, sessions and consents are data:
+  one SQLite file in the volume `sgnl_id_data`. Its encrypted parts need
+  `example-sgnl-id-storage-encryption-key`. Day-to-day people and
+  groups: `bin/sgnl-id` (`USERS.md`), as the agent's client `sgnl-agent`.
+- Health check: `/realms/example/api/health`. Metrics on :9959
+  (label `metrics.port`); alert `LoginServerDown`.
+- Stripe SSO needs a signing key Stripe trusts: `id-saml-key-b64` /
+  `id-saml-cert-b64` (the old Keycloak realm key). A new instance makes
+  its own pair and gives Stripe the certificate.
+- **Groups**: a fresh database has none, and `bin/sgnl-id` can't create
+  them. Create `sgnl_users`, `forgejo_users`, `admins`, `developers` and
+  `sgnl_invited` with the server's own CLI in the container
+  (`authelia groups create <name>`); not done from this repo yet.
+- First person: `bin/sgnl-id add-user alice "Alice Admin"`, groups
+  (`bin/sgnl-id add-to-group alice sgnl_users admins developers
+  forgejo_users`), then `bin/sgnl-id setup-email alice 48`: set a password
   and register a passkey (required at every login, no TOTP). Everyone
   after that: `bin/sgnl-add-user` (`USERS.md`).
-- In the backup via `pg_dump` (`BACKUPS.md`); drill:
-  `bin/sgnl-backup-restore-test-keycloak`.
+- In the nightly backup (paused copy of the volume, `BACKUPS.md`); drill:
+  `bin/sgnl-backup-restore-test-id`.
+- The test instance on `auth.sgnl` (`config/deploy.authelia.yml`,
+  `authelia/configuration.yml`, `bin/sgnl-authelia-matrix`) stays in the
+  repo for testing new fork releases; it isn't running.
 
 ## 2. Stalwart
 
@@ -125,10 +151,10 @@ minutes, check `stalwart-cli query Task` for a failed `AcmeRenewal`
 certificate, so nothing relays until it exists.
 
 Add your mailbox(es) to the Accounts section of `stalwart/plan.ndjson`
-(the name must match the Keycloak username) and re-run
+(the name must match the login server's username) and re-run
 `bin/stalwart-apply`. The plan is idempotent: re-run it after every edit.
 
-Then wire Stalwart to Keycloak (once Keycloak is healthy):
+Then wire Stalwart to the login server (once it is healthy):
 
 ```bash
 bin/stalwart-apply stalwart/plan-oidc.ndjson
@@ -142,16 +168,16 @@ both want host ports 465/993 and the same RocksDB volume. For an
 upgrade: `kamal app stop`, then `kamal deploy`.
 
 Log in at `https://mail.sgnl.example.com/account` → it should
-send you through Keycloak. Create one app password per device there
-for 465/993 (iOS/macOS Mail, Thunderbird). With Keycloak as the
+send you through the login server. Create one app password per device there
+for 465/993 (iOS/macOS Mail, Thunderbird). With the login server as the
 directory, plain passwords never work for mail; app passwords do, even
-while Keycloak is down (see `stalwart/plan-oidc.ndjson`). The directory
+while it is down (see `stalwart/plan-oidc.ndjson`). The directory
 object keeps its description `authelia` (what the plan matches on and
 `Authentication.directoryId` points to); only its `issuerUrl` changed.
 
 Notes:
-- If Stalwart starts while Keycloak is unreachable (e.g. host reboot
-  with Keycloak coming up later), it gives up on OIDC after ~30 s. Mail
+- If Stalwart starts while the login server is unreachable (e.g. host
+  reboot with the login server coming up later), it gives up on OIDC after ~30 s. Mail
   and app passwords keep working, but web/Bulwark logins fall back to
   Stalwart's own login form until Stalwart is restarted once. To check:
   `curl -s https://mail.sgnl.example.com/api/discover/x@example.com`
@@ -191,12 +217,12 @@ Notes:
 kamal accessory boot web -c config/deploy.bulwark.yml   # an accessory: vendor image, no build
 ```
 
-`https://inbox.sgnl.example.com` → "Sign in" → Keycloak → inbox.
+`https://inbox.sgnl.example.com` → "Sign in" → login server → inbox.
 Requires `stalwart/plan-oidc.ndjson` from step 2.
 
-Bulwark hands Keycloak's access token to Stalwart's JMAP, and Stalwart
-accepts it through its OIDC directory (same issuer for both). If the
-Keycloak login succeeds but Bulwark then shows an auth error, look in
+Bulwark hands the login server's access token to Stalwart's JMAP, and
+Stalwart accepts it through its OIDC directory (same issuer for both). If
+the login succeeds but Bulwark then shows an auth error, look in
 `kamal app logs -c config/deploy.stalwart.yml` for the rejected token.
 Interim fallback: set `OAUTH_ONLY: "false"` in `deploy.bulwark.yml`,
 redeploy, and log in with an app password from `/account`.
@@ -208,8 +234,8 @@ in `config/deploy.vaultwarden.yml`); nobody signs up with a password.
 
 ```bash
 kamal setup -c config/deploy.vaultwarden.yml
-# https://vault.sgnl.example.com -> "Use single sign-on" -> Keycloak,
-# then set your master password (Keycloak never sees it)
+# https://vault.sgnl.example.com -> "Use single sign-on" -> login server,
+# then set your master password (the login server never sees it)
 ```
 
 **The company organisation (once, by the first admin).** Personal
@@ -226,12 +252,12 @@ the owner's browser), everything after that is config:
    bin/sgnl-secret --set vaultwarden-org-client-secret
    ```
 3. Apply `instance/vaultwarden/org.yaml` (from `instance.example/`: groups
-   `everyone` = Keycloak `sgnl_users` and `admins` = `admins`; collections
+   `everyone` = login server `sgnl_users` and `admins` = `admins`; collections
    `<company name>` for everyone to view, `SGNL` for admins):
    ```bash
    bin/sgnl-vault-sync --dry-run && bin/sgnl-vault-sync
    ```
-   From then on `bin/sgnl-kc` re-runs it after people changes; each new
+   From then on `bin/sgnl-id` re-runs it after people changes; each new
    person accepts the invite email once. Details: `USERS.md` "Shared
    passwords".
 4. New infrastructure secrets now go into the `SGNL` collection
@@ -240,15 +266,16 @@ the owner's browser), everything after that is config:
 
 Accounts are linked by `"<issuer>/<sub>"` (table `sso_users`): changing
 `SSO_AUTHORITY` needs the same change in that table (done for the
-Keycloak switch, `../instance/docs/PLAN-keycloak.md`).
+Keycloak switch, `../instance/docs/PLAN-keycloak.md`; the 2026-11-24
+switch kept the issuer and every `sub`, so nothing changed).
 
 ## 5a. listmonk (campaigns)
 
 ```bash
 bin/sgnl-deploy listmonk                    # our fork's image (SQLite); first start creates the
                                             # schema and the super admin (SGNL_ADMIN_USER, break-glass)
-bin/sgnl-keycloak-apply                     # client "listmonk"
-bin/sgnl-listmonk-setup                     # root URL, Keycloak login, admin's email, SES, bounces
+# client "listmonk" is in id/configuration.yml (bin/sgnl-deploy id)
+bin/sgnl-listmonk-setup                     # root URL, SSO login, admin's email, SES, bounces
 bin/sgnl-backup-install                     # nightly copy of the database + uploads volumes
 ```
 
@@ -261,7 +288,7 @@ arm64) after an upgrade test from the previous release;
 `latest`). To upgrade: bump the tag there, take a backup, then
 `bin/sgnl-deploy listmonk` (stop-first: a few seconds down). The database is one SQLite file in the volume `sgnl_listmonk_data`.
 
-DNS: `listmonk.sgnl` (DNS.md). Login: straight to Keycloak (our fork's
+DNS: `listmonk.sgnl` (DNS.md). Login: straight to the login server (our fork's
 `auto_login`, set by bin/sgnl-listmonk-setup), matched by email to an
 existing listmonk account (no auto-created accounts: add people in
 listmonk → Users with their `<user>@<domain>` email). The break-glass
@@ -288,7 +315,7 @@ for public lists.
 
 ```bash
 kamal setup -c config/deploy.forgejo.yml
-bin/sgnl-forgejo-setup auth    # login source "authelia" (the name is kept; it points at Keycloak)
+bin/sgnl-forgejo-setup auth    # login source "authelia" (OIDC against the login server)
 docker restart <forgejo container>   # on the host; picks up the source
 bin/sgnl-forgejo-setup org     # after alice's first login
 ```
@@ -301,7 +328,7 @@ fails its health check. New image or env: `kamal app stop`, then
 ## 6. OpenCloud + Collabora
 
 ```bash
-# the four opencloud* clients are in keycloak/realm.yaml (bin/sgnl-keycloak-apply)
+# the four opencloud* clients are in id/configuration.yml (bin/sgnl-deploy id)
 bin/sgnl-deploy collabora    # creates the WOPI proof key once, boots the accessory
 kamal deploy -c config/deploy.opencloud.yml    # hook uploads opencloud/csp.yaml + proxy.yaml
 bin/sgnl-backup-install --run
@@ -324,8 +351,7 @@ files; an admin sees "Admin settings"; a `.docx` opens in Collabora.
 Whole host, both tenants. Design and conventions: `instance/docs/PLAN-monitoring.md`.
 
 ```bash
-# DNS: A monitor.sgnl -> VPS (docs/DNS.md); client grafana in keycloak/realm.yaml
-bin/sgnl-keycloak-apply
+# DNS: A monitor.sgnl -> VPS (docs/DNS.md); client grafana in id/configuration.yml
 bin/stalwart-apply                                       # alerts@ group
 kamal accessory boot all -c config/deploy.monitoring.yml # VM, vmagent, vmalert, Alertmanager, exporters
 kamal deploy -c config/deploy.monitoring.yml             # Grafana (provisioning baked into the image)
@@ -347,7 +373,7 @@ cotenant's session; vmalert and Grafana re-read them by themselves.
 A container is scraped when its deploy.yml has the label
 `metrics.port: "<port>"` (optional `metrics.path`, `metrics.job`).
 
-Checks: `https://monitor.sgnl.example.com` logs in via Keycloak
+Checks: `https://monitor.sgnl.example.com` logs in via the login server
 (admins = Grafana Admin, others Viewer); dashboard "Host & containers"
 has data; every `up` is 1. Admins also see org "Logs" (org switcher):
 dashboard "Logs" has lines; non-admins don't see that org. Break-glass admin:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Onboard a person: Keycloak invite + Stalwart mailbox. Nothing secret is
+# Onboard a person: login server invite + Stalwart mailbox. Nothing secret is
 # created or handed over: the person sets their own password and passkey.
 #
 #   bin/sgnl-add-user anna "Anna Example" anna@personal.example
@@ -8,7 +8,7 @@
 #   1. Adds the <user> mailbox to instance/stalwart/mailboxes.ndjson and applies the plan
 #      (the mailbox exists before their first login, so mail to them
 #      arrives from day one).
-#   2. bin/sgnl-id invite: Keycloak user <user>, email = the personal
+#   2. bin/sgnl-id invite: login server user <user>, email = the personal
 #      address, group sgnl_invited only; set-up email (password + passkey,
 #      valid 72 h) to that personal address.
 # Afterwards, once they've set password + passkey:
@@ -45,7 +45,7 @@ PY
 fi
 bin/stalwart-apply | tail -1
 
-echo "2/2 Keycloak invite"
+echo "2/2 login server invite"
 bin/sgnl-id invite "$user" "$name" "$personal"
 
 cat <<EOF

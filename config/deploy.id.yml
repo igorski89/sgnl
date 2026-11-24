@@ -2,13 +2,10 @@
 # PRODUCTION login server: Authelia (our fork) on id.<apps>, replacing
 # Keycloak (instance/docs/PLAN-authelia-fork.md).
 #
-# !!! Deploying this IS the switch-over: kamal-proxy then sends
-# id.<apps>/realms/<realm>/* to Authelia, while Keycloak stays the host's
-# root service (and owns the TLS certificate) until it is removed (M6).
-# Follow the cutover runbook (instance/docs/RUNBOOK-authelia-cutover.md);
-# never `bin/sgnl-deploy --all` it (it isn't in its ORDER).
-# Rollback: `docker exec kamal-proxy kamal-proxy remove sgnl-id-web` sends
-# the path back to Keycloak at once.
+# Path-only: kamal-proxy sends id.<apps>/realms/<realm>/* here; the host's
+# root (/) and its TLS certificate belong to a placeholder,
+# bin/sgnl-root-placeholder sgnl-id-root id (Keycloak's until M6,
+# 2026-11-24; instance/docs/RUNBOOK-authelia-cutover.md).
 #
 # One container, SQLite in the volume sgnl_id_data (backed up, paused copy).
 # id/configuration.yml is uploaded to /opt/sgnl/id by

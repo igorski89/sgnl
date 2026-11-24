@@ -11,7 +11,7 @@
 # .kamal/secrets), never from this file. App client secrets are the ones the
 # apps already use (keycloak-<app>-client-secret), so no app changes.
 #
-# Settings mirror keycloak/realm.yaml: password + passkey (second factor),
+# Settings mirror Keycloak's realm.yaml (removed): password + passkey (second factor),
 # login by username or email, sessions 8 h idle / 7 days, no remember-me,
 # 3 failures in 2 min -> 30 min lockout, passwords >= 12 characters, every
 # app needs group sgnl_users (Forgejo also forgejo_users), Stripe over SAML.
@@ -139,7 +139,7 @@ identity_providers:
         audience: ['https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'one_factor'
-      # The apps (generated from keycloak/realm.yaml + the login matrix; the
+      # The apps (generated from Keycloak's realm.yaml (removed) + the login matrix; the
       # MCP gateway's clients come after the switch-over).
       - client_id: 'vaultwarden'
         client_name: 'Vaultwarden (vault.{{SGNL_APPS_DOMAIN}})'

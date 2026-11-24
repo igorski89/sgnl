@@ -105,7 +105,7 @@ ssh root@<ip> 'docker run --rm --env-file /opt/sgnl/backup/restic.env \
 Then, per volume in `APPS` of `host/backup/sgnl-backup.sh`
 (`sgnl_stalwart_v1`, `sgnl_forgejo_data`, `sgnl_vaultwarden_data`,
 `sgnl_opencloud_config`, `sgnl_opencloud_data`, `sgnl_listmonk_data`,
-`sgnl_listmonk_uploads`):
+`sgnl_listmonk_uploads`, `sgnl_bulwark_data`, `sgnl_id_data`):
 
 ```bash
 ssh root@<ip> 'docker volume create <vol> && \
@@ -122,20 +122,12 @@ config: `rsync -a /opt/sgnl/backup/r/config/stalwart/ /opt/sgnl/stalwart/`.
 
 Follow `docs/DEPLOY.md` §1–6b with these differences:
 
-- **Keycloak's database before Keycloak**: boot
-  only the Postgres accessory (Postgres 18, volume `*_db18` mounted at
-  `/var/lib/postgresql`), restore its dump from the snapshot, then deploy
-  the app:
-  ```bash
-  kamal accessory boot postgres -c config/deploy.keycloak.yml
-  ssh root@<ip> 'docker exec -i sgnl-keycloak-postgres pg_restore -U keycloak \
-    -d keycloak --no-owner --exit-on-error < /opt/sgnl/backup/r/staging/keycloak/keycloak.dump'
-  ```
-  The fresh database's app user (`keycloak`) is a normal user
-  owning it; `dbadmin` is the superuser (`docker exec … psql -U dbadmin`,
-  docs/SECURITY.md §2c). Restore as the app user, as above.
-  Users, passkeys and clients come back from the dump; don't re-run the
-  first-login or invite steps. listmonk keeps everything (settings,
+- **Login server**: its data (`sgnl_id_data`) is one of the volumes
+  above; deploy it as in §1 (placeholder, then `bin/sgnl-deploy id`)
+  with the same `id-storage-encryption-key` as before, or it can't read
+  the encrypted parts. Users, groups, passwords and passkeys come back
+  with the volume; don't create groups or re-run the first-login or
+  invite steps. listmonk keeps everything (settings,
   lists, subscribers, users) in its SQLite file in `sgnl_listmonk_data`,
   restored with the volumes above: just deploy it.
 - **Stalwart 1.x** starts on the restored `sgnl_stalwart_v1`;
@@ -146,10 +138,10 @@ Follow `docs/DEPLOY.md` §1–6b with these differences:
   changes).
 - **Skip every "first time" step** (creating admins, Vaultwarden signups,
   Forgejo setup, Stalwart bootstrap): the restored data already has them.
-- `bin/sgnl-keycloak-apply` is safe to run (realm config as code).
+- `bin/sgnl-deploy id` is safe to re-run (its config is code).
 
 **Check:** `docs/DEPLOY.md` §7 sanity pass; log in at
-`https://id.sgnl.example.com`, `https://drive.sgnl.example.com`,
+`https://id.sgnl.example.com/realms/example/settings`, `https://drive.sgnl.example.com`,
 `https://mail.sgnl.example.com`; the owner sees their mail, files
 and vault.
 
@@ -162,7 +154,7 @@ and vault.
 1. `bin/sgnl-backup-install` (timer back on), then
    `bin/sgnl-backup-install --run`.
 2. All restore drills: `ls bin/sgnl-backup-restore-test*` (Stalwart,
-   Keycloak, listmonk, Forgejo, Vaultwarden, OpenCloud).
+   login server, listmonk, Forgejo, Vaultwarden, OpenCloud).
    `bin/sgnl-vault-sync` once (Vaultwarden organisation, groups,
    collections).
 3. Inbound mail since the snapshot is in S3 for 30 days (`incoming/`):

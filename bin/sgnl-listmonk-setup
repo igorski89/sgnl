@@ -6,7 +6,7 @@ after `kamal setup -c config/deploy.listmonk.yml` and whenever these change.
 
 Sets:
   app.root_url     https://listmonk.<SGNL_APPS_DOMAIN>
-  security.oidc    Keycloak login (client "listmonk", keycloak/realm.yaml);
+  security.oidc    Keycloak login (client "listmonk", id/configuration.yml);
                    no auto-created accounts: Keycloak users log in to the
                    listmonk account with the same email; the login page
                    goes straight to Keycloak (auto_login, our fork;

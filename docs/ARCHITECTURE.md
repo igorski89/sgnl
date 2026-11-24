@@ -21,7 +21,7 @@ there).
 
 | Service | Subdomain | Role |
 | --- | --- | --- |
-| Keycloak | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, account page; realm as code in `keycloak/realm.yaml` |
+| Login server (our Authelia fork) | `id.sgnl.example.com` | Login (OIDC; SAML for SaaS), user directory, passkeys, settings page; config as code in `id/configuration.yml`, people via `bin/sgnl-id`. Keycloak until 2026-11-24 |
 | Stalwart | `mail.sgnl.example.com` | IMAP (993), JMAP, submission (465) — mail routing itself (both directions) is AWS SES, see below |
 | Bulwark | `inbox.sgnl.example.com` | JMAP webmail client |
 | Forgejo | `git.sgnl.example.com` | Git forge: repos, issues, PRs, LFS (local disk). HTTPS only |
@@ -70,7 +70,8 @@ forward-auth middleware does. `kamal-proxy` (the proxy Kamal 2 ships and
 that `cotenant` already relies on) is a much simpler TLS/host router — it has
 no pluggable auth middleware, and forward-auth would break every
 non-browser client anyway (mail apps, Bitwarden apps, file sync apps).
-So the identity provider (Authelia until 2026-10-19, now Keycloak) is a
+So the identity provider (Authelia until 2026-10-19, Keycloak until
+2026-11-24, now our Authelia fork) is a
 **standalone OIDC provider + login portal**, and every app logs in
 through it over OIDC: OpenCloud, Forgejo, Vaultwarden (SSO, 1.35+),
 Bulwark, Dashy and Stalwart's web UI. All require a passkey as second
@@ -151,8 +152,9 @@ registry, config files rendered and uploaded by Kamal. Dashy, Bulwark,
 and Collabora do (`config/deploy.<app>.yml`, accessory `web`);
 restarts are a few seconds down instead of a health-gated swap. The
 passthrough Dockerfiles remain for apps that need the swap or a build
-(Keycloak, Stalwart, Forgejo, OpenCloud, Vaultwarden, Grafana), and
-listmonk's builds our fork from source (`docker/listmonk/Dockerfile`).
+(Stalwart, Forgejo, OpenCloud, Vaultwarden, Grafana, and the login
+server, whose image is our Authelia fork), and listmonk's is our fork
+too (`docker/listmonk/Dockerfile`).
 
 Kamal's zero-downtime swap + `kamal-proxy` registration is tied to its
 build → push → pull → boot lifecycle, which expects to own an
@@ -170,7 +172,7 @@ ssh -N -R 5555:localhost:5555 root@203.0.113.10
 
 Everything specific to one company lives in `instance/`, its own private
 git repo inside this folder (ignored by this repo): the values in
-`instance/sgnl.env` (domain, server, Keycloak realm, name prefix,
+`instance/sgnl.env` (domain, server, realm (the issuer path), name prefix,
 backup bucket, ...), the landing page tiles, the mailboxes, optional
 monitoring extras, and that company's own docs. Configs, deploy files
 and scripts read it; nothing outside it names a real company.
@@ -193,7 +195,7 @@ that names your instance (run it before contributing back).
    above), then `cd aws && terraform apply` — see `aws/README.md`. This
    is now the source of several DNS values.
 2. Read `docs/DNS.md` and create the records.
-3. Read `docs/DEPLOY.md` in full — order matters (Keycloak's secrets and realm,
+3. Read `docs/DEPLOY.md` in full — order matters (the login server's secrets and groups,
    the AWS pipeline, and Stalwart's ACME all need to exist before the
    services that depend on them boot cleanly).
 4. Confirm the VPS actually has headroom, especially if a co-tenant app

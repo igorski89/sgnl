@@ -40,7 +40,7 @@ no Kubernetes, nothing clever where something simple works.
 
 | | App | What it's for |
 | --- | --- | --- |
-| 🔑 | Keycloak | One login for everything, with passkeys |
+| 🔑 | Authelia (our fork) | One login for everything, with passkeys |
 | ✉️ | Stalwart + Bulwark | Your own mail server and webmail |
 | 📁 | OpenCloud + Collabora | Files, sync, sharing, editing Word/Excel/PowerPoint in the browser |
 | 🔒 | Vaultwarden | Password manager (works with the Bitwarden apps) |
@@ -57,7 +57,7 @@ flowchart LR
   people(["You and your team<br/>browser, phone, mail apps"])
   world(["Mail from and to<br/>the outside world"])
   subgraph server["One server, deployed with Kamal"]
-    login["Login<br/>Keycloak"]
+    login["Login<br/>Authelia"]
     apps["Mail, files, office,<br/>passwords, git, start page"]
     mon["Monitoring<br/>Grafana"]
   end

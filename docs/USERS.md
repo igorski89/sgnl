@@ -8,71 +8,75 @@ One identity per person: **`alice@example.com` works everywhere.**
 | Stalwart web UI, **first screen** ("Enter your account name") | `alice@example.com` (the full address; a bare `alice` lands on Stalwart's own password form, which never works) |
 | Webmail (Bulwark), vault, files, git, start page | nothing: "Sign in" sends you to the SGNL login page |
 | Mail apps (IMAP 993 / SMTP 465) | `alice@example.com` + an **app password** |
-| Own account (password, passkeys, sessions) | `https://id.sgnl.example.com/realms/example/account` |
+| Own account (password, passkeys) | `https://id.sgnl.example.com/realms/example/settings` (start page tile) |
 
-Since 2026-10-19 people live in **Keycloak**, realm `example`
-(`config/deploy.keycloak.yml`; Authelia + lldap before that, see
-`instance/docs/PLAN-keycloak.md`). Groups, roles, login flows and app clients are
-code: `keycloak/realm.yaml`, applied with `bin/sgnl-keycloak-apply`.
-People and group memberships are data, managed with `bin/sgnl-kc`.
+Since 2026-11-24 people live in the **login server**, our Authelia fork
+(service `sgnl-id`, `config/deploy.id.yml`; Keycloak from 2026-10-19,
+Authelia + lldap before that). Settings, login rules and app clients are
+code: `id/configuration.yml`, applied with `bin/sgnl-deploy id`. People,
+groups and memberships are data (one SQLite file, volume
+`sgnl_id_data`), managed with `bin/sgnl-id`.
 
 | Group | Meaning |
 |---|---|
-| `sgnl_users` | May use the apps (role `sgnl_user`, checked by flow `sgnl-apps`). Without it every app answers "Access denied"; the account page still works |
-| `forgejo_users` | May also log in to Forgejo (role `forgejo_user`, flow `sgnl-forgejo`) |
+| `sgnl_users` | May use the apps (authorization policy `sgnl_apps`; Stripe's SAML too). Without it every app refuses the login; the settings page still works |
+| `forgejo_users` | May also log in to Forgejo (policy `sgnl_forgejo`, needs both groups) |
 | `admins` | Our admin group (passed to apps in the `groups` claim: Forgejo site admin, OpenCloud admin, Dashy admin section) |
 | `developers` | Team Developers in Forgejo's org `example` |
-| `sgnl_invited` | Invited, not finished yet: account page only (see Onboarding) |
+| `sgnl_invited` | Invited, not finished yet: settings page only (see Onboarding) |
 
-Each user has one `email`. It's the address apps see and where Keycloak
-sends set-up and reset links. Extra addresses (postmaster@, contact@) are
-Stalwart aliases/groups, not Keycloak.
+Each user has one `email`. It's the address apps see and where the login
+server sends set-up and reset links. Extra addresses (postmaster@,
+contact@) are Stalwart aliases/groups, not login accounts.
 
-Login rules (`keycloak/realm.yaml`):
-- **Password + passkey, always.** Passwords: 12+ characters, not the
-  username or email. The second factor is a passkey (WebAuthn), required;
-  no TOTP, no SMS. Someone with only a password is sent to "register a
-  passkey" and gets no further.
-- **Brute force:** 3 failures within 2 min → 30 min lockout. The login
-  page keeps saying "Invalid username or password" while locked. Lift it
-  early: break-glass below.
-- **Sessions:** 8 h idle, 7 days max; access tokens live 5 min, so
-  disabling someone takes effect in apps within 5 min at most.
-- No consent screens, no self-registration. "Forgot Password?" on the
-  login page emails a reset link to the user's own (SGNL) address.
+Login rules (`id/configuration.yml`):
+- **Password + passkey, always.** Passwords: 12+ characters
+  (`password_policy`). The second factor is a passkey (WebAuthn),
+  required; no TOTP, no SMS. Login by username or email.
+- **Brute force** (`regulation`): 3 failures within 2 min → 30 min
+  lockout. The login page shows the same error as for a wrong password
+  while locked. Lift it early: break-glass below.
+- **Sessions** (`session`): 8 h idle, 7 days max, no remember-me. Access
+  tokens live up to 1 h (Authelia's default; the config sets no
+  lifespan). `disable`/`logout` make the login server refuse a person's
+  sessions and tokens at once; only an app that checks a signed access
+  token itself (OpenCloud's clients get JWTs) may accept one until it
+  expires.
+- No self-registration. Consent is implicit, except the Stalwart web UI
+  and the OpenCloud desktop/mobile apps, which ask once (kept 1 year).
+  "Reset password?" on the login page emails a reset link to the user's
+  own (SGNL) address.
 
-Accounts migrated from Authelia kept their Authelia id as Keycloak id
-(alice), so apps that link by `sub` (Forgejo, Vaultwarden) found the same
-account. Forgejo's login source is still named `authelia`, hence its
-"Sign in with authelia" button.
+Accounts were imported from Keycloak on 2026-11-24 with their Keycloak
+id as `sub`, passwords and passkeys, so apps that link by `sub`
+(Forgejo, Vaultwarden) found the same accounts and nobody had to set up
+again. Forgejo's login source is still named `authelia` (from before
+Keycloak), hence its "Sign in with authelia" button.
 
 ### Managing people
 
-`bin/sgnl-kc` does it from the laptop, as the agent's service account
-`sgnl-agent` (rights: manage/view/query users, query groups, view events
-and clients; not realm settings). Run it without arguments for usage:
+`bin/sgnl-id` does it from the laptop, through the login server's admin
+API as the agent's client `sgnl-agent` (client credentials; scopes
+`authelia.admin.read` and `.write`, i.e. the whole admin API, not the
+settings). Run it without arguments for usage:
 
 | Command | Does |
 |---|---|
 | `list`, `show <user>` | people, groups, credentials, sessions |
 | `add-user <user> "<First Last>" [email]` | plain user, no password (then `setup-email`) |
-| `add-to-group` / `remove-from-group <user> <group>...` | memberships (groups themselves live in `realm.yaml`) |
+| `add-to-group` / `remove-from-group <user> <group>...` | memberships (the group must exist) |
 | `setup-email <user> [hours]` | email: set own password + register a passkey (default 24 h) |
 | `invite <user> "<First Last>" <personal-email> [hours]` | onboarding, below (default 72 h) |
 | `finish-invite <user> <group>...` | ends onboarding, below |
-| `disable` / `enable <user>` | disable also ends all their sessions |
-| `logout <user>` | ends all their sessions, incl. offline tokens |
-| `events [<user>] [max]` | recent logins and errors |
+| `disable` / `enable <user>` | disable also ends all their sessions and tokens |
+| `logout <user>` | ends all their sessions and tokens |
+| `events [<user>] [max]` | recent login attempts |
+| `audit [<user>] [max]` | recent admin changes (who changed what) |
 
-Changes apply at once, no redeploy. Two master-admin helpers exist for
-what the service account can't do: `bin/sgnl-kcadm` (Keycloak's admin
-CLI, e.g. realm settings, credentials, lockouts) and `bin/sgnl-kcimport`
-(partial import, only to create a user with a *given* id). Both log in as
-the master realm's `admin` (Vaultwarden
-`example-sgnl-keycloak-bootstrap-admin-password`, password over
-stdin). The admin console
-(`https://id.sgnl.example.com/admin/master/console/#/example`)
-is that same break-glass account; prefer the scripts.
+Changes apply at once, no redeploy. There is no admin console and no
+master admin. What `bin/sgnl-id` can't do (create a group, lift a
+lockout, remove a passkey or password, delete a user) is done with the
+server's own CLI inside its container, over root SSH (break-glass below).
 
 ## Onboarding
 
@@ -84,17 +88,17 @@ bin/sgnl-add-user anna "Anna Example" anna@personal.example
 
 It adds the mailbox `anna@example.com` to `instance/stalwart/mailboxes.ndjson`
 and applies the plan (mail to her arrives from day one), then runs
-`bin/sgnl-kc invite`: Keycloak user `anna` with her **personal** address
+`bin/sgnl-id invite`: login server user `anna` with her **personal** address
 as email, group `sgnl_invited` only, and a set-up email (valid 72 h) to
 that address. Nothing secret is created or handed over.
 
 Why the personal address and `sgnl_invited`: she can't read
 anna@example.com before she can log in, and while her email is the
 personal one no app may create her account from it (Forgejo would name
-her after it). So she only reaches her account page until:
+her after it). So she only reaches her settings page until:
 
 ```bash
-bin/sgnl-kc finish-invite anna developers forgejo_users   # sgnl_users is always added
+bin/sgnl-id finish-invite anna developers forgejo_users   # sgnl_users is always added
 ```
 
 It refuses until she has both a password and a passkey; then it sets
@@ -104,7 +108,7 @@ groups. Commit `stalwart/plan.ndjson`. Tell her on another channel
 
 `finish-invite` also adds her to the company's password vault
 (`bin/sgnl-vault-sync`, see "Shared passwords"): Vaultwarden emails her
-an invitation to anna@example.com, separate from the Keycloak one and
+an invitation to anna@example.com, separate from the login one and
 valid for 5 days. Tell her about it explicitly (it's the step people
 miss). Once she has accepted it (step 7 of her side), run the sync once
 more, which confirms her; until then she sees none of the company's
@@ -117,16 +121,17 @@ bin/sgnl-vault-sync
 **SaaS with SSO (Stripe):** if she needs one, invite her there with her
 company address (anna@example.com) and pick her role in that service:
 Stripe → Settings → Team and security → Team. Roles stay in Stripe;
-she then signs in with "Sign in with SSO" (Keycloak, client
-`https://dashboard.stripe.com/saml/metadata` in keycloak/realm.yaml),
-or from the landing page tile. Stripe's mobile app has no SSO.
+she then signs in with "Sign in with SSO" (the login server over SAML,
+service provider `https://dashboard.stripe.com/saml/metadata` in
+`id/configuration.yml`), or from the landing page tile. Stripe's mobile app has no SSO.
 
 ### Personal guide (PDF)
 
 Each person gets a personalized guide: no secrets in it, written so it can
 also be handed to their own AI assistant (it ends with a "For your AI
 assistant" section: facts, known quirks, rules, when to escalate). Bob's
-(updated 2026-10-19 for Keycloak) is the model:
+(written 2026-10-19 for Keycloak; its login screens and emails changed
+on 2026-11-24) is the model:
 `onboarding/bob-onboarding.md` (gitignored). Copy it, replace
 name/rights/personal address, bring its steps in line with "The
 person's side" below (the vault invitation, step 7, is the one people
@@ -141,14 +146,14 @@ weasyprint <user>.html <user>-onboarding.pdf && rm <user>.html
 
 ### The person's side (~30 min)
 
-1. In the personal mailbox: email from **Secrétariat Général**
-   (`auth@example.com`), subject **"Update Your Account"** (check
-   spam). The link works once, within 72 h.
-2. Set a password (12+ characters), register a **passkey**; they land on
-   their account page. Apps say "Access denied" until `finish-invite`.
-   They tell the admin "done".
-3. After `finish-invite`: a **second passkey** on another device (account
-   page → Account security → Signing in), since there's no fallback.
+1. In the personal mailbox: the set-up email from `auth@example.com`
+   (check spam). The link works once, within 72 h; it is used up when
+   the page opens, so an abandoned set-up needs a new `setup-email`.
+2. Set a password (12+ characters), register a **passkey**. Apps refuse
+   them until `finish-invite`. They tell the admin "done".
+3. After `finish-invite`: a **second passkey** on another device
+   (settings page → Two-Factor Authentication), since there's no
+   fallback.
 4. Webmail `https://inbox.sgnl.example.com`: shared mailboxes show
    up under "Shared".
 5. `https://mail.sgnl.example.com/account` → Credentials → one
@@ -205,12 +210,12 @@ Email Address → "Edit Email Addresses…" → add it.
 
 ## Forgejo (git.sgnl.example.com)
 
-Accounts are created at first login through Keycloak (no sign-up form, no
+Accounts are created at first login through the login server (no sign-up form, no
 local passwords). Groups decide everything, re-applied at every login:
 
 | Group | Forgejo |
 |---|---|
-| `forgejo_users` | may log in at all (Keycloak flow `sgnl-forgejo`, also needs `sgnl_users`) |
+| `forgejo_users` | may log in at all (login server policy `sgnl_forgejo`, also needs `sgnl_users`) |
 | `admins` | site admin |
 | `developers` | team **Developers** (write on all repos) in org `example` |
 
@@ -225,7 +230,7 @@ token** (scope: repository read/write), then use it as the password:
 remembers it). LFS works over the same URL.
 
 Setup that lives in Forgejo's database: `bin/sgnl-forgejo-setup auth`
-(login source, still named `authelia`, pointing at Keycloak) and
+(login source, named `authelia`, pointing at the login server) and
 `bin/sgnl-forgejo-setup org` (org + team).
 
 ## Shared passwords (Vaultwarden organisation)
@@ -236,16 +241,16 @@ are shared with **groups**. Which groups exist, who is in them and which
 collections they see is config, not clicks:
 `instance/vaultwarden/org.yaml`, applied by `bin/sgnl-vault-sync`.
 
-- Members and groups follow Keycloak (e.g. Vaultwarden `everyone` =
-  Keycloak `sgnl_users`). `bin/sgnl-kc` runs the sync after
+- Members and groups follow the login server (e.g. Vaultwarden
+  `everyone` = login server `sgnl_users`). `bin/sgnl-id` runs the sync after
   finish-invite, group changes, disable and enable, so a new person is
   invited automatically; they accept the invite email once, and the next
   sync confirms them.
-- When the sync runs: on every people change (through `bin/sgnl-kc`),
+- When the sync runs: on every people change (through `bin/sgnl-id`),
   plus once by hand after someone accepts their invite (Vaultwarden
   doesn't tell us). No timer: confirming needs an owner's unlocked vault,
-  which no unattended job has. Changes clicked in Keycloak's admin
-  console bypass `bin/sgnl-kc`: run `bin/sgnl-vault-sync` afterwards.
+  which no unattended job has. Changes made with the server's own CLI
+  bypass `bin/sgnl-id`: run `bin/sgnl-vault-sync` afterwards.
   An expired invite: Admin Console → Members → ⋮ → "Resend invitation". Disabled people are revoked; owners are never
   touched.
 - Collections listed in `org.yaml` are created and their group access
@@ -261,13 +266,13 @@ Dashy, configured only through git (UI editing is off): SGNL's tiles in
 `dashy/conf.yml`, the instance's own tiles in
 `instance/dashy/extra-apps.yml` (added to "Apps", e.g. Stripe) and
 `instance/dashy/extra-sections.yml` (own sections), logging in through
-Keycloak (client `dashy`). Each tile/section has
+the login server (client `dashy`). Each tile/section has
 `displayData.showForGroups: [<group>]`; a new app = a new item, then
 `bin/sgnl-deploy dashy`.
 
 - Tiles are hints: the logged-in user's browser receives the whole
   config and hides what their groups don't match. Access is enforced by
-  Keycloak and each app, so admin links being in the config is harmless.
+  the login server and each app, so admin links being in the config is harmless.
 - Status lights: Dashy's server checks each `statusCheckUrl` every 5 min
   (only for logged-in users).
 
@@ -293,18 +298,19 @@ It blocks every way in, because several bypass the SSO login:
 
 | Where | Suspend does | Blocks |
 |---|---|---|
-| Keycloak | account disabled, all sessions and refresh/offline tokens ended | every SSO login, at once; a token an app already holds lasts ≤ 5 min |
+| Login server | account disabled, all sessions and tokens (incl. refresh/offline) ended (`bin/sgnl-id disable`) | every SSO login, at once; a signed access token an app checks itself lasts ≤ 1 h |
 | Stalwart | `authenticate` permission disabled (Merge) | webmail/JMAP, IMAP, SMTP, **app passwords**; mail keeps arriving |
 | Forgejo | prohibit login | web and **git tokens** |
 | OpenCloud | account disabled (`accountEnabled=false`) | apps, **app tokens** (WebDAV); files and shares stay |
 
 Groups, teams, mailbox, repos and passwords stay as they are, so resume
-puts everything back. The Keycloak step was tested 2026-10-19 with a
-throwaway user (1 session → 0, disabled; resume re-enabled it); the other
-three steps were tested 2026-10-09/11.
+puts everything back. The other three steps were tested 2026-10-09/11;
+the login server step uses `bin/sgnl-id disable`/`enable` (tested on
+Keycloak 2026-10-19, not yet with a throwaway user on the new server).
 
-- Only this person is logged out (with Authelia, ending sessions meant
-  restarting it and logging everyone out). `--kill-sessions` is accepted
+- Only this person is logged out (with stock Authelia before
+  2026-10-19, ending sessions meant restarting it and logging everyone
+  out). `--kill-sessions` is accepted
   but no longer needed.
 - The OpenCloud step makes a 5-minute admin app token on the server with
   the CLI (`opencloud auth-app create`); nothing is stored.
@@ -318,47 +324,51 @@ three steps were tested 2026-10-09/11.
   the Forgejo CLI has no "prohibit login").
 
 After a suspected compromise, before `--resume`: remove their password
-and passkeys in Keycloak and send a new `setup-email` (to a mailbox only
+and passkeys (break-glass below) and send a new `setup-email` (to a mailbox only
 they control); they replace their mail app passwords and git tokens. The
 script prints this list.
 
 ### Offboarding (manual until the script exists)
 
-- **Login:** `bin/sgnl-kc disable anna` (ends their sessions too). Delete
-  the Keycloak user only once their data is handled
-  (`bin/sgnl-kcadm delete users/<id> -r example`).
-- **Mail apps:** app passwords don't go through Keycloak. Delete them, or
-  the account, in Stalwart (`stalwart-cli query AppPassword` while
+- **Login:** `bin/sgnl-id disable anna` (ends their sessions too).
+  Delete the user only once their data is handled; `bin/sgnl-id` has no
+  delete: the server's CLI, `authelia users delete anna` (break-glass
+  below). A deleted username can never be used again.
+- **Mail apps:** app passwords don't go through the login server. Delete
+  them, or the account, in Stalwart (`stalwart-cli query AppPassword` while
   impersonating, or delete the account once its mail is exported).
 - **Groups:** remove the `#…-group` entries from their `memberGroupIds`.
-- **Forgejo:** git tokens don't go through Keycloak either. Disable the
+- **Forgejo:** git tokens don't go through the login server either. Disable the
   account: Forgejo → Site administration → User accounts → edit →
   "Disable sign-in" (and delete their tokens), or delete the user once
   their repos are moved.
 - **Vaultwarden:** remove them from shared collections. Their own vault is
   encrypted with their master password.
-- **Stripe (and other SAML SaaS):** Keycloak doesn't tell Stripe, and a
+- **Stripe (and other SAML SaaS):** the login server doesn't tell Stripe, and a
   Stripe session lasts up to 12 h after the last SSO login. Remove them
   in Stripe → Settings → Team and security → Team, the same day.
 
 ## Break-glass (admin)
 
-`bin/sgnl-kc` covers most of it; the rest needs the master admin
-(`bin/sgnl-kcadm`). `<id>` is the `id` from `bin/sgnl-kc show <user>`.
+`bin/sgnl-id` covers most of it. The rest has no script: it is the
+login server's own CLI inside its container, on the host over root SSH
+(`docker exec <sgnl-id container> authelia ...`; the container has the
+config and the storage key). There is no master admin or admin console;
+root SSH to the host is the break-glass. These CLI commands haven't
+been run on production yet.
 
 | Situation | Fix |
 |---|---|
-| Lost passkey / phone | Remove the credential: admin console → Users → user → Credentials, or `bin/sgnl-kcadm get users/<id>/credentials -r example` then `bin/sgnl-kcadm delete users/<id>/credentials/<credential-id> -r example`. Then `bin/sgnl-kc setup-email <user>` (password + new passkey) |
-| Forgot password | "Forgot Password?" on the login page (link to their SGNL mailbox). Locked out of everything: `bin/sgnl-kc setup-email <user>`; if their mailbox is out of reach, temporarily set a personal email (as in onboarding) |
-| "Invalid username or password" although right (brute-force lockout: 3 failures / 2 min → 30 min) | `bin/sgnl-kcadm delete attack-detection/brute-force/users/<id> -r example` |
-| Set-up/reset emails don't arrive | Keycloak sends via SES (`smtpServer` in `keycloak/realm.yaml`, from `auth@`); check `bin/sgnl-kc events <user>` and `kamal app logs -c config/deploy.keycloak.yml` |
-| alice locked out (lost both passkeys) | The master admin isn't affected: `bin/sgnl-kcadm` (or the admin console) → remove alice's credentials → `bin/sgnl-kc setup-email alice` |
+| Lost passkey / phone | Remove their passkeys: `authelia storage user webauthn list <user>`, then `authelia storage user webauthn delete <user> --description <name>` (or `--all`). Then `bin/sgnl-id setup-email <user>` (password + new passkey) |
+| Forgot password | "Reset password?" on the login page (link to their SGNL mailbox). Locked out of everything: `bin/sgnl-id setup-email <user>`; if their mailbox is out of reach, temporarily set a personal email (`authelia users update <user> --email <personal>`; `bin/sgnl-id` has no command for it), and set it back afterwards |
+| Login fails although the password is right (lockout: 3 failures / 2 min → 30 min) | `authelia storage bans user list`, then `authelia storage bans user revoke <user>` |
+| Set-up/reset emails don't arrive | The login server sends via SES (`notifier` in `id/configuration.yml`, from `auth@`); check `bin/sgnl-id events <user>` and `kamal app logs -c config/deploy.id.yml` |
+| alice locked out (lost both passkeys) | Same as a lost passkey, over root SSH: remove alice's passkeys, then `bin/sgnl-id setup-email alice` (the agent's client doesn't need alice's login) |
 | Banned by **Stalwart** (10 failed mail/web logins per hour per IP) | `DEPLOY.md` step 2, "If you get auto-banned" |
 
-The master realm's `admin` has its own brute-force lockout and can't log
-in to the apps (it's not in realm `example`). Keycloak's database is
-in the nightly backup; restore drill: `bin/sgnl-backup-restore-test-keycloak`.
+The login server's database is in the nightly backup; restore drill:
+`bin/sgnl-backup-restore-test-id`.
 
 The Stalwart recovery admin (`STALWART_RECOVERY_ADMIN` in Vaultwarden (`bin/sgnl-secret`))
-works without Keycloak. It's the way into Stalwart if Keycloak is
-broken; mail and app passwords keep working without Keycloak anyway.
+works without the login server. It's the way into Stalwart if the login
+server is broken; mail and app passwords keep working without it anyway.

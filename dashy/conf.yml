@@ -1,7 +1,7 @@
 # SGNL landing page (home.{{SGNL_APPS_DOMAIN}}), Dashy 4.9.
 # Tiles are hints, not access control: every app enforces its own access
 # through its own login. Dashy logs in via Keycloak (client "dashy" in
-# keycloak/realm.yaml, flow sgnl-apps: needs sgnl_users); showForGroups
+# id/configuration.yml, flow sgnl-apps: needs sgnl_users); showForGroups
 # uses the groups claim (client scope "groups", in the id_token). Editing
 # in the UI is disabled: this file in git is the source of truth
 # (rendered and uploaded by .kamal/hooks/pre-app-boot, mounted ro).

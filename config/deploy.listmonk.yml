@@ -1,7 +1,7 @@
 <% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
 # listmonk (listmonk.sgnl): campaigns, mailing lists,
 # double opt-in, subscriber self-service. Login via Keycloak (client
-# "listmonk", keycloak/realm.yaml); the local super admin
+# "listmonk", id/configuration.yml); the local super admin
 # (LISTMONK_ADMIN_PASSWORD) is break-glass only. Settings that live in
 # listmonk's database (root URL, OIDC, SMTP/SES, bounces) are set by
 # bin/sgnl-listmonk-setup.

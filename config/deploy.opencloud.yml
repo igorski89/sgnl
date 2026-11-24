@@ -7,7 +7,7 @@
 #
 # Login only through Keycloak (OC_EXCLUDE_RUN_SERVICES=idp; Authelia until
 # 2026-10-19): four public OIDC clients (web, desktop, iOS, Android) in
-# keycloak/realm.yaml, advertised to the apps via WEBFINGER_*. Accounts are
+# id/configuration.yml, advertised to the apps via WEBFINGER_*. Accounts are
 # created at first login and found again by preferred_username (not by
 # issuer/sub); roles come from groups (opencloud/proxy.yaml).
 # Reference: opencloud-compose stable-7.2 (tested with OpenCloud 7.2.4).
