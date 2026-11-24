@@ -26,7 +26,8 @@ RESTIC_IMAGE=restic/restic:0.19.1
 . "$BASE/notify.env" # ALERT_TO, SES_SMTP_USERNAME, SES_SMTP_PASSWORD
 
 # Kamal service label -> Docker volume (Forgejo: repos + LFS + SQLite;
-# listmonk: SQLite in sgnl_listmonk_data).
+# listmonk: SQLite in sgnl_listmonk_data; sgnl-id, the login server:
+# users, passkeys, sessions, consents in one SQLite file).
 # One line per volume; a service with two volumes is paused once per volume.
 # Collabora has no state worth keeping (its WOPI proof key is regenerated).
 APPS=(
@@ -38,6 +39,7 @@ APPS=(
   "sgnl-listmonk sgnl_listmonk_data"
   "sgnl-listmonk sgnl_listmonk_uploads"
   "sgnl-bulwark-web sgnl_bulwark_data"
+  "sgnl-id sgnl_id_data"
 )
 
 notify_failure() {

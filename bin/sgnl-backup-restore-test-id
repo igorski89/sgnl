@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Restore drill for the login server (sgnl-id, Authelia): restores its
+# SQLite file from the latest backup on the host and checks:
+#   - the file is in the backup and SQLite's integrity check passes;
+#   - users, groups and passkeys: same counts as live (live may be newer);
+#   - a throwaway login server (same image and settings as live; internal
+#     network: no internet, no ports) starts healthy on it, which proves
+#     the storage encryption key still opens it.
+# Cleans up after itself. See docs/BACKUPS.md.
+#
+#   bin/sgnl-backup-restore-test-id [snapshot]   # default: latest
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+
+ssh "root@$SGNL_HOST" "export SNAPSHOT='${1:-latest}'; exec bash -s" <<'REMOTE'
+set -euo pipefail
+B=/opt/sgnl/backup
+T=$B/restore-test-id
+NAME=sgnl-restore-test-id
+ENVF=/dev/shm/$NAME.env
+cleanup() {
+  docker rm -f $NAME >/dev/null 2>&1 || true
+  docker network rm $NAME >/dev/null 2>&1 || true
+  rm -rf "$T" "$ENVF"
+}
+trap cleanup EXIT
+cleanup
+
+LIVE=$(docker ps -qf label=service=sgnl-id -f label=role=web | head -1)
+[[ -n $LIVE ]] || { echo "live login server not running (needed for its image and settings)"; exit 1; }
+
+echo "==> restoring sgnl_id_data from snapshot $SNAPSHOT"
+docker run --rm --env-file $B/restic.env -v $B/cache:/root/.cache/restic -v $B:/restore \
+  restic/restic:0.19.1 restore "$SNAPSHOT" --host sgnl --target /restore/restore-test-id \
+  --include /staging/sgnl_id_data -q
+DB=$T/staging/sgnl_id_data/db.sqlite3
+[[ -s $DB ]] || { echo "MISSING in backup: sgnl_id_data/db.sqlite3"; exit 1; }
+echo "    restored: $(du -h "$DB" | cut -f1)"
+
+python3 - "$DB" /var/lib/docker/volumes/sgnl_id_data/_data/db.sqlite3 <<'PY'
+import sqlite3, sys
+ro = lambda p: sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+r, l = ro(sys.argv[1]), ro(sys.argv[2])
+ok = r.execute("pragma integrity_check").fetchone()[0]
+print(f"    integrity_check: {ok}")
+if ok != "ok": sys.exit(1)
+print("    counts (restored | live; live may be newer than the snapshot):")
+for t in ("authentication_users", "authentication_groups", "webauthn_credentials"):
+    n = lambda c: c.execute(f"select count(*) from {t}").fetchone()[0]
+    print(f"    {t:24} {n(r):4} | {n(l)}")
+PY
+
+echo "==> starting a throwaway login server on it (no internet, no ports)"
+IMAGE=$(docker inspect --format '{{.Config.Image}}' "$LIVE")
+# Live's settings (secrets included) in a root-only file in RAM, removed at exit.
+( umask 077; docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LIVE" | grep . > "$ENVF" )
+docker network create --internal $NAME >/dev/null
+docker run -d --name $NAME --network $NAME --env-file "$ENVF" \
+  -e AUTHELIA_NOTIFIER_SMTP_DISABLE_STARTUP_CHECK=true --health-interval 3s \
+  -v "$T/staging/sgnl_id_data:/data" "$IMAGE" >/dev/null
+for i in $(seq 1 45); do
+  s=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $NAME 2>/dev/null || echo gone)
+  [[ $s == healthy ]] && break
+  if [[ $s == exited || $s == gone || $i == 45 ]]; then
+    echo "==> restore test FAILED: throwaway login server not healthy ($s)"
+    docker logs --tail 15 $NAME 2>&1 | grep -iv secret || true
+    exit 1
+  fi
+  sleep 2
+done
+echo "    started healthy (storage encryption key opens the restored file)"
+echo "==> restore test OK (scratch copy removed)"
+REMOTE
