@@ -44,10 +44,9 @@ Dir["config/deploy.*.yml"].sort.each do |path|
                   [".kamal/hooks/pre-app-boot"], &:read)
   File.write(File.join(out, "#{name}.hook.txt"), hook) unless hook.empty?
 end
-# Files the apply scripts render (realm, Stalwart plans), with whatever
+# Files the apply scripts render (Stalwart plans), with whatever
 # secrets SGNL_SECRETS gives (use fake ones).
-{ "keycloak.realm.rendered" => %w[bin/sgnl-keycloak-apply --render],
-  "stalwart.plan.rendered" => %w[bin/stalwart-apply --render],
+{ "stalwart.plan.rendered" => %w[bin/stalwart-apply --render],
   "stalwart.plan-oidc.rendered" => %w[bin/stalwart-apply stalwart/plan-oidc.ndjson --render] }.each do |file, cmd|
   File.write(File.join(out, file), IO.popen(cmd, &:read))
   abort("#{cmd.join(' ')} failed") unless $?.success?
