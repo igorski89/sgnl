@@ -301,6 +301,8 @@ because a mail it read told it to (prompt injection).
 | The apps refuse tokens not issued for them: OpenCloud (§6) and Stalwart's JWTs (§3). So a token leaked from one app, or a login token copied from an AI app, works nowhere else | ✅ 2026-11-24 |
 | Login lifetimes (lifespan `mcp_login`): access token 1 h, refresh 14 days idle, 30 days at most, then password + passkey again. 1 h only because of the audience checks above | ✅ |
 | **Prompt injection**: sending mail and saving into shared spaces need the person's yes in a confirmation dialog shown by the AI app (MCP elicitation: Accept/Decline, waits up to 10 min). Declined: nothing happens | ✅ |
+| Meeting invitations (`event_invite`): only after a confirmation whose first line names every attendee and the time, and marks those OUTSIDE the company; the mail server sends the invitations. Changing or cancelling an invitation isn't offered. The tool fails if the server scheduled nothing | ✅🧪 2026-11-25 |
+| Sharing (`file_share`): one file or folder from the person's own space, with one colleague (a person in the company), view by default or edit; only after a confirmation naming the item, the person and the access. No public links, no project spaces | ✅🧪 2026-11-25 |
 | Only the AI apps listed in `SGNL_MCP_CONFIRM_CLIENTS` may do those actions: Claude Code, claude.ai and Codex; any other client is refused | ✅🧪 |
 | **Residual risk, accepted 2026-11-25**: in its no-approval mode Codex answers the dialog itself (tested 2026-11-25), so the person isn't really asked. That mode is the person's own choice in their client, and SGNL can't tell it apart. Users are told not to use it with SGNL (`USERS.md`) | ⚠️ accepted |
 | Bcc: allowed; verified that outside recipients' copies carry no Bcc header (2026-11-25) | ✅🧪 |
@@ -316,8 +318,8 @@ Residual:
 - claude.ai keeps its users' tokens on Anthropic's servers; anyone who
   connects it trusts that.
 - Reading is not confirmed: an AI app the person connected can read
-  all their mail and files. A confirmation only guards sending and
-  shared spaces.
+  all their mail and files. A confirmation only guards sending, invitations,
+  sharing and shared spaces.
 
 ## 7. Login server (identity)
 

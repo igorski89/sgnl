@@ -73,8 +73,8 @@ flowchart LR
 
 Everyone signs in once, with a passkey, and every app trusts that
 login. AI apps reach mail and files through the MCP gateway, with the
-same login; before one sends mail or saves into a shared space, you
-confirm it in a dialog. Mail goes in and out through Amazon SES, so a message is
+same login; before one sends mail or invitations, shares a file or saves into a
+shared space, you confirm it in a dialog. Mail goes in and out through Amazon SES, so a message is
 stored safely even while the server is down. Every night the data
 goes, encrypted, to off-site storage.
 
