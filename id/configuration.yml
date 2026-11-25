@@ -137,6 +137,58 @@ identity_providers:
     token_exchange:
       token_types: ['urn:ietf:params:oauth:token-type:access_token']
       default_requested_token_type: 'urn:ietf:params:oauth:token-type:access_token'
+    # Client ID Metadata Documents (fork sgnl.14+, localhost filter sgnl.15):
+    # AI apps without a registered client identify themselves by the URL of
+    # a document they publish. One rule per app host; each gets exactly what
+    # the registered MCP clients get: the hosted gateway's /mcp only (no
+    # /admin/mcp), password + passkey, explicit consent. Whether an app may
+    # send or share is the gateway's SGNL_MCP_CONFIRM_CLIENTS (VS Code yes;
+    # opencode auto-accepts dialogs and pi has none: read and drafts only).
+    client_id_metadata_documents:
+      enabled: true
+      rules:
+        # VS Code (GitHub Copilot): native, loopback 127.0.0.1:33418.
+        - domain: 'vscode.dev'
+          allow_loopback_redirect_uris: true
+          authorization_policy: 'sgnl_apps'
+          consent_mode: 'explicit'
+          scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+          audience: ['sgnl-mcp']
+          requested_audience_mode: 'implicit'
+          resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
+          implicit_audience_with_resource: true
+          access_token_signed_response_alg: 'RS256'
+          claims_policy: 'mcp'
+          lifespan: 'mcp_login'
+          subject_token_clients_supported: ['sgnl-mcp']
+        # opencode: native, loopback 127.0.0.1.
+        - domain: 'opencode.ai'
+          allow_loopback_redirect_uris: true
+          authorization_policy: 'sgnl_apps'
+          consent_mode: 'explicit'
+          scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+          audience: ['sgnl-mcp']
+          requested_audience_mode: 'implicit'
+          resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
+          implicit_audience_with_resource: true
+          access_token_signed_response_alg: 'RS256'
+          claims_policy: 'mcp'
+          lifespan: 'mcp_login'
+          subject_token_clients_supported: ['sgnl-mcp']
+        # pi coding agent: native, loopback 127.0.0.1.
+        - domain: 'pi.dev'
+          allow_loopback_redirect_uris: true
+          authorization_policy: 'sgnl_apps'
+          consent_mode: 'explicit'
+          scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+          audience: ['sgnl-mcp']
+          requested_audience_mode: 'implicit'
+          resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
+          implicit_audience_with_resource: true
+          access_token_signed_response_alg: 'RS256'
+          claims_policy: 'mcp'
+          lifespan: 'mcp_login'
+          subject_token_clients_supported: ['sgnl-mcp']
     jwks:
       - key: {{ env "SGNL_ID_OIDC_JWK_B64" | b64dec | mindent 10 "|" | msquote }}
     cors:

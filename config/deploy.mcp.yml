@@ -65,4 +65,7 @@ env:
     # any other client can't. Codex is included (decided 2026-11-25): in its
     # no-approval mode it answers the dialog itself, which is the person's own
     # choice of setting in their client (SECURITY.md §6e, residual risk).
-    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai,sgnl-mcp-codex
+    # VS Code logs in by CIMD (its client id is its document's URL); it draws
+    # the dialog itself and needs a click (2026-11-26). opencode (auto-accepts
+    # an empty form) and pi (no dialog) are deliberately not listed.
+    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai,sgnl-mcp-codex,https://vscode.dev/oauth/client-metadata.json
