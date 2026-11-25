@@ -54,6 +54,9 @@ env:
     SGNL_MCP_MAIL_AUDIENCE: stalwart-webui
     SGNL_MCP_FILES_AUDIENCE: opencloud
     SGNL_MCP_SESSION_IDLE: 1h
+    # Days the mail server keeps Trash before deleting (Stalwart DataRetention
+    # expunge timer); the mail_trash confirmation names it (from v0.1.8).
+    SGNL_MCP_TRASH_DAYS: "30"
     # Admin tools at /admin/mcp (M4): read-only admin API client; only the
     # group admins (current view) gets in.
     SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
