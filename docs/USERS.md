@@ -209,6 +209,13 @@ any unknown @example.com address (typos, hello@, spam to made-up
 names) lands there. Members: `"memberGroupIds":{"#admin-group":true}` on
 the user's line in `stalwart/plan.ndjson`, then `bin/stalwart-apply`.
 A new group: a `"@type":"Group"` Account line like `admin-group`.
+Its `description` is the **sender name** people see on mail sent as the
+group (e.g. "Example Ltd"), so keep it presentable. Stalwart copies it
+into the group's sending identity the first time someone sends, and
+doesn't follow later changes: after renaming, update that identity too
+(webmail: the shared account's identity settings; or JMAP `Identity/set`
+logged in as a member with the recovery admin's impersonation
+`member@domain%admin`).
 
 Groups today: **admin@** (catch-all) and **contact@** (website enquiries
 from the example.com contact form, created 2026-10-16; the site's
