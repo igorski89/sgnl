@@ -417,7 +417,7 @@ bin/sgnl-deploy mcp
 - Settings (`config/deploy.mcp.yml`): `SGNL_MCP_ALLOW_GROUPS` (who may
   use it: `sgnl_users`) and `SGNL_MCP_CONFIRM_CLIENTS` (the AI apps
   that may send mail or save into shared spaces after a confirmation
-  dialog: Claude Code and claude.ai, not Codex; `SECURITY.md` §6e).
+  dialog: Claude Code, claude.ai and Codex; `SECURITY.md` §6e).
 - One container, no state: nothing to back up. A deploy drops open MCP
   sessions and any open confirmation dialog; clients reconnect by
   themselves. The proxy doesn't buffer and waits up to 900 s for a

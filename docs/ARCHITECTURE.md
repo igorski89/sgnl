@@ -71,9 +71,10 @@ OpenCloud; it keeps nothing on disk.
   AI apps off too.
 - **Confirmation**: sending mail and saving into shared spaces need a
   yes from the person in a dialog the AI app shows (MCP elicitation).
-  Only AI apps known to show that dialog honestly may do it (Claude
-  Code and claude.ai); with any other (Codex) those actions are refused
-  (`docs/SECURITY.md` §6e).
+  Only the AI apps listed in the gateway's settings may do it (Claude
+  Code, claude.ai and Codex); with any other those actions are refused.
+  Codex in its no-approval mode answers the dialog itself: that is the
+  person's own setting (`docs/SECURITY.md` §6e).
 
 Why a gateway and not each app's own API: one login and one set of
 rules for every AI client, tokens scoped to one app each, and the

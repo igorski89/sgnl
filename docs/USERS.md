@@ -193,8 +193,9 @@ contacts and files through the MCP gateway; nothing to add per person
 point them to "Getting started" in the gateway's user guide
 (github.com/igorski89/sgnl-mcp, `docs/user-guide.md`). The AI app sends
 them to the SGNL login page (password + passkey); before it sends mail
-or saves into a shared space, it asks them to confirm. With Codex,
-sending mail and saving into shared spaces are refused (`SECURITY.md` §6e). Disabling or
+or saves into a shared space, it asks them to confirm. Codex in its
+no-approval mode answers that question itself: tell them not to use that
+mode with SGNL (`SECURITY.md` §6e). Disabling or
 suspending the account cuts the AI apps off too.
 
 ## Shared mailboxes (groups)

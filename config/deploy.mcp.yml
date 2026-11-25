@@ -58,8 +58,8 @@ env:
     # group admins (current view) gets in.
     SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
     SGNL_MCP_ADMIN_GROUPS: admins
-    # AI apps trusted to show the send/share confirmation to the person;
-    # any other client (Codex until tested) can't send or share.
-    # Not sgnl-mcp-codex: in its no-approval mode Codex answers the send dialog
-    # by itself (tested 2026-11-25), so the person isn't really asked.
-    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai
+    # AI apps that may send mail or share after the confirmation dialog;
+    # any other client can't. Codex is included (decided 2026-11-25): in its
+    # no-approval mode it answers the dialog itself, which is the person's own
+    # choice of setting in their client (SECURITY.md §6e, residual risk).
+    SGNL_MCP_CONFIRM_CLIENTS: sgnl-mcp-claude-code,sgnl-mcp-claude-ai,sgnl-mcp-codex
