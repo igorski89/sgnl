@@ -408,7 +408,8 @@ identity_providers:
         requested_audience_mode: 'implicit'
         # Claude Code names the gateway's URL as the resource (RFC 8707, as
         # the MCP spec asks): the hosted gateway (M3) and the local one (dev).
-        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp', 'http://localhost:8765/mcp']
+        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp', 'https://mcp.{{SGNL_APPS_DOMAIN}}/admin/mcp',
+                   'http://localhost:8765/mcp', 'http://localhost:8765/admin/mcp']
         # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
         # exchange the token.
         implicit_audience_with_resource: true
@@ -433,7 +434,7 @@ identity_providers:
         response_types: ['code']
         audience: ['sgnl-mcp']
         requested_audience_mode: 'implicit'
-        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp']
+        resource: ['https://mcp.{{SGNL_APPS_DOMAIN}}/mcp', 'https://mcp.{{SGNL_APPS_DOMAIN}}/admin/mcp']
         # ...and keep sgnl-mcp in aud too (fork sgnl.13+), so the gateway can
         # exchange the token.
         implicit_audience_with_resource: true

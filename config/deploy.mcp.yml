@@ -39,6 +39,7 @@ builder:
 env:
   secret:
     - SGNL_MCP_CLIENT_SECRET
+    - SGNL_MCP_ADMIN_CLIENT_SECRET
   clear:
     SGNL_MCP_LABEL: "SGNL - <%= ENV.fetch("SGNL_DOMAIN") %>"
     SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
@@ -53,6 +54,10 @@ env:
     SGNL_MCP_MAIL_AUDIENCE: stalwart-webui
     SGNL_MCP_FILES_AUDIENCE: opencloud
     SGNL_MCP_SESSION_IDLE: 1h
+    # Admin tools at /admin/mcp (M4): read-only admin API client; only the
+    # group admins (current view) gets in.
+    SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
+    SGNL_MCP_ADMIN_GROUPS: admins
     # AI apps trusted to show the send/share confirmation to the person;
     # any other client (Codex until tested) can't send or share.
     # Not sgnl-mcp-codex: in its no-approval mode Codex answers the send dialog
