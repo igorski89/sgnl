@@ -21,7 +21,7 @@ Each new person still accepts the invite email once (Bitwarden's design).
 Needs: BW_SESSION (an owner's vault, bw CLI), secrets
 vaultwarden-org-client-id/-secret and keycloak-sgnl-agent-client-secret.
 """
-import base64, importlib.machinery, json, os, subprocess, sys, time
+import base64, importlib.machinery, importlib.util, json, os, subprocess, sys, time
 import urllib.error, urllib.request, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
