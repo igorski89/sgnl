@@ -70,7 +70,8 @@ OpenCloud; it keeps nothing on disk.
   current view on every login token, so disabling an account cuts the
   AI apps off too.
 - **Confirmation**: sending mail, sending meeting invitations, sharing a
-  file or folder with a colleague and saving into shared spaces need a
+  file or folder with a colleague, changing one of their files and saving
+  into shared spaces need a
   yes from the person in a dialog the AI app shows (MCP elicitation).
   Only the AI apps listed in the gateway's settings may do it (Claude
   Code, claude.ai and Codex); with any other those actions are refused.
