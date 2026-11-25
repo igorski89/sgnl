@@ -110,7 +110,8 @@ groups. Commit `stalwart/plan.ndjson`. Tell her on another channel
 (`bin/sgnl-vault-sync`, see "Shared passwords"): Vaultwarden emails her
 an invitation to anna@example.com, separate from the login one and
 valid for 5 days. Tell her about it explicitly (it's the step people
-miss). Once she has accepted it (step 7 of her side), run the sync once
+miss). For a temporary test account, skip the vault with
+`SGNL_NO_VAULT_SYNC=1 bin/sgnl-id finish-invite …`. Once she has accepted it (step 7 of her side), run the sync once
 more, which confirms her; until then she sees none of the company's
 passwords:
 
