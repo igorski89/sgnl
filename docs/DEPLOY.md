@@ -434,6 +434,11 @@ the set-up per AI app is in the gateway's user guide
 started"). Turning someone off: disable their account (`bin/sgnl-id
 disable`), which ends their AI app logins too.
 
+Admin tools (read-only) at `https://mcp.<apps>/admin/mcp`: set
+`SGNL_MCP_ADMIN_CLIENT_ID` and the secret (vault `id-mcp-admin-client-secret`,
+login client `sgnl-mcp-admin`, scope `authelia.admin.read`); the login
+clients need the admin URL in their `resource` list. Only `admins` get in.
+
 Checks: `curl -s https://mcp.sgnl.example.com/health` answers; Claude
 Code logs in through the login server and lists your mail.
 

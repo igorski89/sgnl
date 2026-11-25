@@ -302,8 +302,9 @@ because a mail it read told it to (prompt injection).
 | Login lifetimes (lifespan `mcp_login`): access token 1 h, refresh 14 days idle, 30 days at most, then password + passkey again. 1 h only because of the audience checks above | ✅ |
 | **Prompt injection**: sending mail and saving into shared spaces need the person's yes in a confirmation dialog shown by the AI app (MCP elicitation: Accept/Decline, waits up to 10 min). Declined: nothing happens | ✅ |
 | Only AI apps whose dialog really reaches the person may do those actions: `SGNL_MCP_CONFIRM_CLIENTS` = Claude Code and claude.ai. **Codex is excluded**: in its no-approval mode it answers the dialog itself (tested 2026-11-25), so with Codex sending and sharing are refused | ✅🧪 |
-| Bcc sends refused for now | ✅ |
-| No state on disk; secret only in the container env (`SGNL_MCP_CLIENT_SECRET`); the login server holds just its hash | ✅ |
+| Bcc: allowed; verified that outside recipients' copies carry no Bcc header (2026-11-25) | ✅🧪 |
+| **Admin tools** at `/admin/mcp` (read-only: users, groups, events, audit): person tokens must carry the admin URL as audience (a `/mcp` token is refused there); only the group `admins` (current view); the gateway calls the admin API with its own client `sgnl-mcp-admin`, scope `authelia.admin.read` only (write refused, tested). Every admin call is logged with the person | ✅ |
+| No state on disk; secrets only in the container env (`SGNL_MCP_CLIENT_SECRET`, `SGNL_MCP_ADMIN_CLIENT_SECRET`); the login server holds just their hashes. The admin client is the gateway's only credential not tied to a person: read-only | ✅ |
 | Monitoring: alert `McpGatewayDown` (container missing 5 min); `/health` is liveness only | ✅ |
 
 Residual:
