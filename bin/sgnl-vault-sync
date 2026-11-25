@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Vaultwarden organisation as config: members and groups follow Keycloak,
+"""Vaultwarden organisation as config: members and groups follow the login server,
 collections and their access come from $SGNL_INSTANCE_DIR/vaultwarden/org.yaml.
 
   bin/sgnl-vault-sync            # apply
-  bin/sgnl-vault-sync --dry-run  # show what Keycloak says, change nothing
+  bin/sgnl-vault-sync --dry-run  # show what the login server says, change nothing
 
 What it does:
-  1. Keycloak: everyone in the groups named in org.yaml (sgnl-agent).
+  1. Login server: everyone in the groups named in org.yaml (bin/sgnl-id).
+     People are linked by username (externalId); groups keep the
+     externalId prefix "keycloak:" from before 2026-11-24, so the
+     existing Vaultwarden groups are reused.
   2. Members + groups -> Vaultwarden through the organisation import
      (Bitwarden "Directory Connector" API, organisation API key): new
      people are invited by email, disabled ones revoked, people no longer
@@ -19,7 +22,7 @@ What it does:
 
 Each new person still accepts the invite email once (Bitwarden's design).
 Needs: BW_SESSION (an owner's vault, bw CLI), secrets
-vaultwarden-org-client-id/-secret and keycloak-sgnl-agent-client-secret.
+vaultwarden-org-client-id/-secret and id-agent-client-secret.
 """
 import base64, importlib.machinery, importlib.util, json, os, subprocess, sys, time
 import urllib.error, urllib.request, urllib.parse
@@ -130,9 +133,9 @@ def main():
         sys.exit(__doc__)
     c = load_config()
     by_group = keycloak_members(c["groups"])
-    people = {u["id"]: u for us in by_group.values() for u in us}
+    people = {u["username"]: u for us in by_group.values() for u in us}
 
-    print(f"Keycloak: {len(people)} people in {', '.join(c['groups'].values())}")
+    print(f"Login server: {len(people)} people in {', '.join(c['groups'].values())}")
     for g, us in by_group.items():
         print(f"  {g}: {', '.join(sorted(u['username'] + ('' if u.get('enabled', True) else ' (disabled)') for u in us)) or '-'}")
     if dry:
@@ -153,10 +156,10 @@ def main():
         "grant_type": "client_credentials", "scope": "api.organization",
         "client_id": client_id, "client_secret": secret("vaultwarden-org-client-secret")})["access_token"]
     http("POST", f"{VAULT}/api/public/organization/import", token=tok, body={
-        "members": [{"email": u["email"].lower(), "externalId": u["id"], "deleted": not u.get("enabled", True)}
+        "members": [{"email": u["email"].lower(), "externalId": u["username"], "deleted": not u.get("enabled", True)}
                     for u in people.values()],
         "groups": [{"name": g, "externalId": "keycloak:" + c["groups"][g],
-                    "memberExternalIds": [u["id"] for u in us if u.get("enabled", True)]}
+                    "memberExternalIds": [u["username"] for u in us if u.get("enabled", True)]}
                    for g, us in by_group.items()],
         "overwriteExisting": True})
     print(f"members and groups imported ({len(people)} people, {len(by_group)} groups)")
@@ -178,7 +181,7 @@ def main():
             groups.append({"id": gid[g], "readOnly": ro, "hidePasswords": hide, "manage": manage})
         if name in existing:
             col = bw("get", "org-collection", existing[name]["id"], "--organizationid", org_id)
-            # Keycloak-managed groups get exactly org.yaml's access; any
+            # Groups managed here get exactly org.yaml's access; any
             # other access on the collection stays as it is.
             col["groups"] = groups + [g for g in col.get("groups") or [] if g["id"] not in gid.values()]
             bw("edit", "org-collection", col["id"], "--organizationid", org_id, stdin=enc(col))
