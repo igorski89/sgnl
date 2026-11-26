@@ -112,6 +112,12 @@ snapshot_volume() {
 
 echo "==> copying app data"
 for app in "${APPS[@]}"; do
+  # A dev VM (bin/sgnl-dev) may run only some apps: SKIP_MISSING=1 in
+  # notify.env skips volumes that don't exist. Prod never sets it, so a
+  # missing volume there still fails the backup.
+  if [[ ${SKIP_MISSING:-} == 1 ]] && ! docker volume inspect "${app#* }" >/dev/null 2>&1; then
+    echo "${app#* }: not on this host, skipped (SKIP_MISSING)"; continue
+  fi
   # shellcheck disable=SC2086
   snapshot_volume $app
 done
@@ -159,12 +165,13 @@ fi
 # alice's laptop after each commit (bin/sgnl-bootstrap-push), not from
 # here. Warn when it's gone stale, so a broken hook doesn't go unnoticed.
 echo "==> bootstrap bundle age"
-age=$(restic snapshots --host bootstrap --latest 1 --json | python3 -c '
+# Dev VMs have no bootstrap bundle (it carries prod's repo + secrets).
+if [[ ${SKIP_MISSING:-} == 1 ]]; then age=0; else age=$(restic snapshots --host bootstrap --latest 1 --json | python3 -c '
 import json, sys, datetime
 s = json.load(sys.stdin)
 if not s: print(9999); sys.exit()
 t = datetime.datetime.fromisoformat(s[-1]["time"][:19])
-print((datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - t).days)')
+print((datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - t).days)'); fi
 echo "latest bootstrap bundle: $age days old"
 if (( age > ${BOOTSTRAP_MAX_AGE_DAYS:-14} )); then
   notify_failure "the bootstrap bundle (repo + secrets) in the backups is $age days old: run bin/sgnl-bootstrap-push on the laptop and check .git/sgnl-bootstrap-push.log"

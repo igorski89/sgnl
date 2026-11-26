@@ -31,6 +31,9 @@ accessories:
     host: <%= ENV.fetch("SGNL_HOST") %>
     options:
       network-alias: sgnl-mailpit
+      # Also for the VM itself (the backup's alert mail): on the Docker bridge.
+      publish:
+        - "172.17.0.1:587:587"
     env:
       clear:
         MP_SMTP_BIND_ADDR: "0.0.0.0:587"

@@ -56,6 +56,8 @@ d["dns"] = ["$GW"]
 json.dump(d, open(p, "w"), indent=2)
 PY
 systemctl restart docker
+# The VM's own tools reach Mailpit by the name its certificate carries.
+grep -q ' sgnl-mailpit$' /etc/hosts || echo "$GW sgnl-mailpit" >> /etc/hosts
 systemctl enable --now dnsmasq >/dev/null 2>&1
 systemctl restart dnsmasq systemd-resolved
 

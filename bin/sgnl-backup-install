@@ -11,7 +11,8 @@ cd "$(dirname "$0")/.."
 
 source lib/instance.sh
 HOST=root@$SGNL_HOST
-REPO="s3:https://$SGNL_R2_ENDPOINT/$SGNL_BACKUP_BUCKET"
+# Dev VMs (bin/sgnl-dev): Garage on the Docker bridge, plain HTTP inside the VM.
+REPO="s3:${SGNL_BACKUP_S3_SCHEME:-https}://$SGNL_R2_ENDPOINT/$SGNL_BACKUP_BUCKET"
 ALERT_TO=$SGNL_ALERT_EMAIL # same as the AWS alarms (aws/terraform.tfvars); not on our own mail server
 
 kc() { bin/sgnl-secret "$1"; }
@@ -22,6 +23,9 @@ restic_env=$(printf 'RESTIC_REPOSITORY=%s\nRESTIC_PASSWORD=%s\nAWS_ACCESS_KEY_ID
 # Sourced by bash: %q-quoted.
 notify_env=$(printf 'ALERT_TO=%q\nSES_SMTP_USERNAME=%q\nSES_SMTP_PASSWORD=%q\n' \
   "$ALERT_TO" "$(kc ses-smtp-username)" "$(kc ses-smtp-password)")
+# Dev VMs run only some apps: skip volumes that don't exist (never on prod).
+[[ ${SGNL_ENV:-} == dev ]] && notify_env+=$'\nSKIP_MISSING=1'
+
 
 # Instance values ({{SGNL_*}}) filled into a private copy, which is uploaded.
 render=$(mktemp -d); trap 'rm -rf "${render:?}"' EXIT
