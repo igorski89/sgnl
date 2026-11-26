@@ -45,6 +45,20 @@ builder:
 
 # csp.yaml and proxy.yaml are uploaded to /opt/sgnl/opencloud by
 # .kamal/hooks/pre-app-boot (Kamal 2 has no files: for apps).
+# Full-text search inside files (2026-11-26): Apache Tika extracts the text
+# of Office/PDF/... files for OpenCloud's search index. Internal only (no
+# proxy, no published port), capped at 1 GB RAM (shared host). Minimal image:
+# no OCR, so scanned PDFs/images stay unsearchable by content.
+accessories:
+  tika:
+    service: sgnl-tika
+    # apache/tika 3.4 minimal, pinned by digest
+    image: apache/tika@sha256:9f3e5bb9da4229a971a4839416b3204499f20668ee834fa741a6a7504bbea7bf
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-tika
+      memory: 1g
+
 volumes:
   - "sgnl_opencloud_config:/etc/opencloud"
   - "sgnl_opencloud_data:/var/lib/opencloud"
@@ -124,6 +138,10 @@ env:
     # (instance/docs/TODO.md). After a failed fetch the office apps stay gone until
     # the next tick, so this is also the recovery time after a Collabora outage.
     COLLABORATION_CS3API_APP_REGISTRATION_INTERVAL: "10m"
+    # --- Search inside files (Tika accessory above) ---
+    SEARCH_EXTRACTOR_TYPE: "tika"
+    SEARCH_EXTRACTOR_TIKA_TIKA_URL: "http://sgnl-tika:9998"
+    FRONTEND_FULL_TEXT_SEARCH_ENABLED: "true"
     # --- Mail (SES) ---
     NOTIFICATIONS_SMTP_HOST: "<%= ENV.fetch("SGNL_SMTP_HOST") %>"
     NOTIFICATIONS_SMTP_PORT: "587"
