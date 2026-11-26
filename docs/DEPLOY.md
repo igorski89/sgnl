@@ -442,7 +442,7 @@ bin/sgnl-deploy mcp
   use it: `sgnl_users`) and `SGNL_MCP_CONFIRM_CLIENTS` (the AI apps
   that may send mail or invitations, share files or save into shared spaces after a confirmation
   dialog: Claude Code, claude.ai and Codex; `SECURITY.md` §6e).
-- One container, no state: nothing to back up. A deploy drops open MCP
+- One container; its only state is the audit trail (volume `sgnl_mcp_audit`, SQLite at `/data/audit.db`, created once with `docker volume create sgnl_mcp_audit` and owned by uid 65532), in the nightly backup. A deploy drops open MCP
   sessions and any open confirmation dialog; clients reconnect by
   themselves. The proxy doesn't buffer and waits up to 900 s for a
   response, since a send dialog may wait 10 minutes for the person.
