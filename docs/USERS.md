@@ -227,7 +227,7 @@ AI app on the admin connection ("add anna to contact@", "give anna the
 address sales@", each confirmed; `docs/admin-guide.md`), or with
 `stalwart-cli update Account <id> --json '{"memberGroupIds":{…}}'`
 (the whole map: it replaces the old value).
-A new group: a `"@type":"Group"` Account line like `admin-group`.
+A new group: ask an AI app on the admin connection ("create sales@ with anna", confirmed; it then lives only on the server, not in the plan), or a `"@type":"Group"` Account line like `admin-group`. Deleting or renaming one stays a terminal step (deleting deletes its mail).
 Its `description` is the **sender name** people see on mail sent as the
 group (e.g. "Example Ltd"), so keep it presentable. Stalwart copies it
 into the group's sending identity the first time someone sends, and
