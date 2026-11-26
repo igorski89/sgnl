@@ -29,8 +29,13 @@ accessories:
   web:
     image: collabora/code:26.04.6.1.1
     host: <%= ENV.fetch("SGNL_HOST") %>
+    # Limits (2026-11-26): a malformed document must fail on its own, not eat
+    # the shared host (a .docx ending in a bare table made LibreOffice spin and
+    # write 380 MB in 40 s). Normal editing stays far below these.
     options:
       network-alias: sgnl-collabora
+      memory: 3g
+      cpus: 4
     proxy:
       ssl: true
       host: office.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
@@ -51,3 +56,6 @@ accessories:
           --o:net.frame_ancestors=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
           --o:net.lok_allow.host[14]=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
           --o:home_mode.enable=false
+          --o:per_document.limit_load_secs=60
+          --o:per_document.limit_virt_mem_mb=2048
+          --o:per_document.limit_file_size_mb=200
