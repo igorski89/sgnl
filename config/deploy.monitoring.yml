@@ -117,6 +117,26 @@ env:
     GF_AUTH_GENERIC_OAUTH_ORG_ATTRIBUTE_PATH: "groups"
     GF_AUTH_GENERIC_OAUTH_ORG_MAPPING: "sgnl_users:1:Viewer admins:1:Admin admins:2:Admin"
     GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+    # The MCP gateway's admin tools read alerts and metrics AS the admin
+    # (2026-11-26): it exchanges the admin's login token for one with
+    # audience grafana (signed by the login server) and sends it in
+    # X-JWT-Assertion. Same groups and roles as the browser login. aud is
+    # pinned to grafana: a person's mail or files token is refused.
+    GF_AUTH_JWT_ENABLED: "true"
+    GF_AUTH_JWT_HEADER_NAME: "X-JWT-Assertion"
+    GF_AUTH_JWT_JWK_SET_URL: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>/jwks.json"
+    GF_AUTH_JWT_CACHE_TTL: "60m"
+    GF_AUTH_JWT_EXPECT_CLAIMS: '{"iss":"https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>","aud":["grafana"]}'
+    GF_AUTH_JWT_USERNAME_CLAIM: "preferred_username"
+    GF_AUTH_JWT_EMAIL_CLAIM: "email"
+    GF_AUTH_JWT_AUTO_SIGN_UP: "true"   # an admin who never opened Grafana is created as by the browser login
+    GF_AUTH_JWT_GROUPS_ATTRIBUTE_PATH: "groups"
+    GF_AUTH_JWT_ALLOWED_GROUPS: "sgnl_users"
+    GF_AUTH_JWT_ROLE_ATTRIBUTE_PATH: "contains(groups[*], 'admins') && 'Admin' || 'Viewer'"
+    GF_AUTH_JWT_ROLE_ATTRIBUTE_STRICT: "true"
+    GF_AUTH_JWT_ORG_ATTRIBUTE_PATH: "groups"
+    GF_AUTH_JWT_ORG_MAPPING: "sgnl_users:1:Viewer admins:1:Admin admins:2:Admin"
+    GF_AUTH_JWT_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
     # /metrics would be public through kamal-proxy.
     GF_METRICS_ENABLED: "false"
     GF_ANALYTICS_REPORTING_ENABLED: "false"
