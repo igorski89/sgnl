@@ -66,6 +66,12 @@ env:
     # confirmed by an admin. Unset both to switch changes off (read stays).
     SGNL_MCP_ADMIN_WRITE_CLIENT_ID: sgnl-mcp-admin-write
     SGNL_MCP_ADMIN_USER_DOMAIN: <%= ENV.fetch("SGNL_DOMAIN") %>
+    # Admin operations (read-only, 2026-11-26): alerts and metrics through
+    # Grafana as the admin (token exchanged for aud grafana), certificate
+    # expiry by a TLS handshake to each public host.
+    SGNL_MCP_GRAFANA_URL: "https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
+    SGNL_MCP_GRAFANA_AUDIENCE: grafana
+    SGNL_MCP_CERT_HOSTS: "id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,inbox.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,office.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,vault.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,git.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,home.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,listmonk.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>,auth.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>"
     # AI apps that may send mail or share after the confirmation dialog;
     # any other client can't. Codex is included (decided 2026-11-25): in its
     # no-approval mode it answers the dialog itself, which is the person's own
