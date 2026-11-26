@@ -149,6 +149,17 @@ def vault_sync():
         print(f"warning: Vaultwarden not synced ({out.splitlines()[-1] if out else 'failed'}); run bin/sgnl-vault-sync", file=sys.stderr)
 
 
+def freebusy_sync():
+    """Colleagues see each other's free/busy (bin/sgnl-freebusy-sync). A person
+    without a mailbox yet is picked up on the next run. A failure only warns."""
+    if TEST or os.environ.get("SGNL_NO_VAULT_SYNC"):   # test accounts: skip, like the vault
+        return
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-freebusy-sync")], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode:
+        print(f"warning: free/busy not shared ({out.splitlines()[-1] if out else 'failed'}); run bin/sgnl-freebusy-sync", file=sys.stderr)
+
+
 def invite(name, hours):
     _, d = api("POST", f"/users/{u(name)}/invite", {"lifespan": f"{hours}h"})
     print(f"set-up link emailed to {d.get('email')} (valid until {d.get('expires_at')}): set password, register a passkey")
@@ -203,6 +214,7 @@ def main(argv):
         set_groups(a[0], add=["sgnl_users", *[g for g in a[1:] if g != "sgnl_users"]], remove=["sgnl_invited"])
         print(f"{a[0]}: email {email}, groups {','.join(sorted(user(a[0]).get('groups') or []))}")
         vault_sync()
+        freebusy_sync()
     elif cmd in ("disable", "enable") and len(a) == 1:
         api("PATCH", f"/users/{u(a[0])}", {"disabled": cmd == "disable"})
         print(f"{a[0]}: {cmd}d" + (" (every session and token ended)" if cmd == "disable" else " (they log in again)"))

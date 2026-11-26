@@ -200,6 +200,18 @@ no-approval mode answers that question itself: tell them not to use that
 mode with SGNL (`SECURITY.md` §6e). Disabling or
 suspending the account cuts the AI apps off too.
 
+## Colleagues' free/busy and the directory
+
+Everyone sees every colleague's **free/busy** (busy times only, never
+titles or details), and can look colleagues up in the company directory
+(Stalwart `Sharing.allowDirectoryQueries`, in `stalwart/plan.ndjson`).
+Stalwart has no server default for free/busy, so `bin/sgnl-freebusy-sync`
+shares each person's calendars with each colleague with only
+`mayReadFreeBusy` (idempotent; never lowers an existing share).
+`bin/sgnl-id finish-invite` runs it; a new person whose mailbox doesn't
+exist yet (no first login) is picked up the next time it runs, so run it
+once more after their first login.
+
 ## Shared mailboxes (groups)
 
 Shared addresses are Stalwart **Groups** (decided 2026-10-09; not mailing

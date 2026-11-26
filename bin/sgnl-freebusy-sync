@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Colleagues see each other's free/busy: every person's calendars are shared
+with every other person with ONLY the right mayReadFreeBusy (busy times, never
+titles or details). Stalwart has no server-wide default for this, so this
+script sets it, and bin/sgnl-id runs it after finish-invite / enable.
+
+  bin/sgnl-freebusy-sync            # apply (idempotent)
+  bin/sgnl-freebusy-sync --dry-run  # show what's missing, change nothing
+
+People = Stalwart User accounts except machine accounts (SGNL_FREEBUSY_SKIP,
+default "mcp-gateway,ses-relay"). Existing shares are only added to: a patch
+sets shareWith/<colleague>/mayReadFreeBusy = true and never lowers other
+rights. Logs in as each person through the recovery admin's impersonation
+("person@domain%admin"); the credential never leaves this process.
+"""
+import base64, json, os, subprocess, sys, urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402
+
+I = instance.load()
+BASE = f"https://mail.{I['SGNL_APPS_DOMAIN']}"
+SKIP = set(os.environ.get("SGNL_FREEBUSY_SKIP", "mcp-gateway,ses-relay").split(","))
+DRY = sys.argv[1:] == ["--dry-run"]
+if sys.argv[1:] not in ([], ["--dry-run"]):
+    sys.exit(__doc__)
+
+
+def secret(name):
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-secret"), name], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("sgnl-freebusy-sync: " + r.stderr.strip())
+    return r.stdout.strip()
+
+
+ADMIN = secret("stalwart-recovery-admin")
+ADMIN_USER, ADMIN_PASS = ADMIN.split(":", 1)
+
+
+def req(user, path, body=None):
+    auth = base64.b64encode(f"{user}%{ADMIN_USER}:{ADMIN_PASS}".encode()).decode()
+    r = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                               headers={"Authorization": "Basic " + auth, "Content-Type": "application/json"})
+    with urllib.request.urlopen(r) as f:
+        return json.load(f)
+
+
+def people():
+    out = subprocess.run(["stalwart-cli", "query", "Account"], capture_output=True, text=True,
+                         env=dict(os.environ, STALWART_URL=BASE, STALWART_USER=ADMIN_USER, STALWART_PASSWORD=ADMIN_PASS))
+    if out.returncode:
+        sys.exit("sgnl-freebusy-sync: stalwart-cli query Account failed: " + out.stderr.strip()[-200:])
+    res = []
+    for line in out.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and "@" in parts[1]:
+            res.append(parts[1])
+    return res
+
+
+CAL = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars", "urn:ietf:params:jmap:principals"]
+addresses = [a for a in people() if a.split("@")[0] not in SKIP]
+# Only real people: accounts that can log in and have a calendar account.
+sessions = {}
+for a in addresses:
+    try:
+        s = req(a, "/jmap/session")
+    except Exception:
+        continue
+    acc = s.get("primaryAccounts", {}).get("urn:ietf:params:jmap:calendars")
+    if acc and s.get("accounts", {}).get(acc, {}).get("isPersonal"):
+        sessions[a] = acc
+# Principal ids are the account ids (Stalwart); each person's own calendar account id.
+ids = dict(sessions)
+changed = 0
+for owner, acc in sessions.items():
+    r = req(owner, "/jmap", {"using": CAL, "methodCalls": [["Calendar/get", {"accountId": acc, "properties": ["name", "shareWith"]}, "0"]]})
+    cals = r["methodResponses"][0][1].get("list", [])
+    for cal in cals:
+        share = cal.get("shareWith") or {}
+        missing = [o for o in addresses if o != owner and o in ids and not (share.get(ids[o]) or {}).get("mayReadFreeBusy")]
+        if not missing:
+            continue
+        print(f"{owner} calendar {cal.get('name')!r}: free/busy for {', '.join(m.split('@')[0] for m in missing)}")
+        if DRY:
+            continue
+        patch = {f"shareWith/{ids[m]}/mayReadFreeBusy": True for m in missing}
+        # A colleague not yet in shareWith needs the whole rights object.
+        for m in missing:
+            if ids[m] not in share:
+                patch.pop(f"shareWith/{ids[m]}/mayReadFreeBusy")
+                patch[f"shareWith/{ids[m]}"] = {"mayReadFreeBusy": True}
+        u = req(owner, "/jmap", {"using": CAL, "methodCalls": [["Calendar/set", {"accountId": acc, "update": {cal["id"]: patch}}, "0"]]})
+        res = u["methodResponses"][0][1]
+        if cal["id"] in (res.get("updated") or {}):
+            changed += 1
+        else:
+            print("  not updated:", json.dumps(res.get("notUpdated") or res)[:300], file=sys.stderr)
+print(("dry run: " if DRY else "") + f"{len(sessions)} people, {changed} calendar(s) updated")
