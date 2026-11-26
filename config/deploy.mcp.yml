@@ -45,10 +45,11 @@ env:
     # machine account mcp-gateway (bin/stalwart-mcp-api-key; works only from
     # the server, expires after a year).
     - SGNL_MCP_STALWART_API_KEY
-    # Mail admin CHANGES (2026-11-26, option b: the live server owns group
-    # members and aliases): a second key that may also update accounts
-    # (bin/stalwart-mcp-api-key --write). Remove it to switch changes off.
-    - SGNL_MCP_STALWART_WRITE_API_KEY
+    # Mail admin CHANGES are OFF (2026-11-26): Stalwart 1.1.1's grant check
+    # would need the machine account to hold the whole user role, which is
+    # unsafe (it could join a shared mailbox and read it). They come back
+    # with the Stalwart fork patch (instance/docs/TODO.md). To switch on:
+    # bin/stalwart-mcp-api-key --write and add SGNL_MCP_STALWART_WRITE_API_KEY.
   clear:
     SGNL_MCP_LABEL: "SGNL - <%= ENV.fetch("SGNL_DOMAIN") %>"
     SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
