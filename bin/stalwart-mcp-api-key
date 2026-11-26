@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Create (or rotate) the API key the MCP gateway's mail admin tools use to
+# read the mail server as the machine account mcp-gateway@<domain>
+# (stalwart/plan.ndjson): read-only accounts, domains and the outbound
+# queue; valid 1 year; usable only from the server's addresses. Stores it
+# in the vault (stalwart-mcp-gateway-api-key); never prints it.
+#
+# Like bin/stalwart-relay-app-password: logs in as "mcp-gateway@...%admin"
+# (recovery-admin impersonation), briefly grants the account the
+# sysApiKey* permissions, and always restores its read-only set on exit.
+#
+# Usage: bin/stalwart-mcp-api-key      (then redeploy config/deploy.mcp.yml)
+set -euo pipefail
+source "$(dirname "$0")/../lib/instance.sh"
+cd "$(dirname "$0")/.."
+
+source "${SECRETS_FILE:-.kamal/secrets}"
+export STALWART_URL=${STALWART_URL:-https://mail.$SGNL_APPS_DOMAIN}
+ADMIN=${STALWART_RECOVERY_ADMIN%%:*}
+export STALWART_PASSWORD=${STALWART_RECOVERY_ADMIN#*:}
+ACCT=mcp-gateway@$SGNL_DOMAIN
+ITEM=stalwart-mcp-gateway-api-key
+DESC="MCP gateway (read-only admin)"
+READ='"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true'
+# The server's public address, plus Docker's private ranges (the gateway
+# container reaches mail.<apps> through kamal-proxy on the same host).
+IPS="{\"$SGNL_HOST/32\":true,\"172.16.0.0/12\":true}"
+EXPIRES=$(date -u -v+1y +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -d '+1 year' +%Y-%m-%dT00:00:00Z)
+
+as_admin() { STALWART_USER=$ADMIN stalwart-cli "$@"; }
+as_acct() { STALWART_USER="$ACCT%$ADMIN" stalwart-cli "$@"; }
+
+id=$(as_admin query Account | awk -v a="$ACCT" '$2==a {print $1}')
+[[ -n $id ]] || { echo "account $ACCT not found - run bin/stalwart-apply first" >&2; exit 1; }
+
+set_perms() {
+  as_admin update Account "$id" --json "{\"permissions\":{\"@type\":\"Replace\",\"enabledPermissions\":{$READ$1},\"disabledPermissions\":{}}}" >/dev/null
+}
+set_perms ',"sysApiKeyCreate":true,"sysApiKeyQuery":true,"sysApiKeyGet":true,"sysApiKeyDestroy":true'
+trap 'set_perms ""; echo "mcp-gateway permissions restored (read-only)"' EXIT
+
+old=$(as_acct query ApiKey | awk -v d="$DESC" 'NR>1 && index($0,d) {print $1}' | paste -sd, -)
+out=$(as_acct create ApiKey --json "{\"description\":\"$DESC\",\"expiresAt\":\"$EXPIRES\",\"allowedIps\":$IPS,\"permissions\":{\"@type\":\"Replace\",\"permissions\":{$READ}}}")
+secret=$(grep -o 'API_[A-Za-z0-9_-]*' <<<"$out" | head -1)
+[[ ${#secret} -ge 20 ]] || { echo "could not read the new key from stalwart-cli output:" >&2; sed -E 's/API_[A-Za-z0-9_-]+/API_…/g' <<<"$out" >&2; exit 1; }
+printf '%s' "$secret" | bin/sgnl-secret --set "$ITEM"
+echo "new API key stored as $ITEM (expires $EXPIRES)"
+unset secret out
+if [[ -n $old ]]; then
+  as_acct delete ApiKey --ids "$old" >/dev/null
+  echo "deleted previous key(s): $old"
+fi

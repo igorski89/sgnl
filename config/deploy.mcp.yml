@@ -41,6 +41,10 @@ env:
     - SGNL_MCP_CLIENT_SECRET
     - SGNL_MCP_ADMIN_CLIENT_SECRET
     - SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET
+    # Mail admin tools, READ-ONLY (2026-11-26): API key of the mail server's
+    # machine account mcp-gateway (bin/stalwart-mcp-api-key; works only from
+    # the server, expires after a year).
+    - SGNL_MCP_STALWART_API_KEY
   clear:
     SGNL_MCP_LABEL: "SGNL - <%= ENV.fetch("SGNL_DOMAIN") %>"
     SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
