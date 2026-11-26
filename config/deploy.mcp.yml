@@ -67,6 +67,9 @@ env:
     # Days the mail server keeps Trash before deleting (Stalwart DataRetention
     # expunge timer); the mail_trash confirmation names it (from v0.1.8).
     SGNL_MCP_TRASH_DAYS: "30"
+    # Colleagues share free/busy with everyone by default (bin/sgnl-freebusy-sync),
+    # so an empty availability means free.
+    SGNL_MCP_FREEBUSY_SHARED: "1"
     # Admin tools at /admin/mcp (M4): read-only admin API client; only the
     # group admins (current view) gets in.
     SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
