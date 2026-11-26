@@ -72,6 +72,11 @@
 # Two API keys, usable only from the server (bin/stalwart-mcp-api-key
 # [--write]): the read key is a fixed read-only list; the write key inherits.
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (mail admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true}}}}}
+# Company directory: signed-in people may look up colleagues' names and
+# addresses (JMAP Principal/query; contacts and free/busy in AI apps and mail
+# clients). Stalwart's default is off (2026-11-26: on, by the admin's decision).
+{"@type":"update","object":"Sharing","value":{"allowDirectoryQueries":true}}
+
 # People and shared mailboxes: per instance.
 @include {{SGNL_INSTANCE_DIR}}/stalwart/mailboxes.ndjson
 
