@@ -57,6 +57,17 @@ def read(path):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         # "@include <file>": that file's lines here (the instance's mailboxes).
+        # "@prod <line>" / "@dev <line>": only on prod instances / only on
+        # dev ones (SGNL_ENV=dev, bin/sgnl-dev: no Cloudflare, no ACME).
+        dev = os.environ.get("SGNL_ENV") == "dev"
+        if line.startswith("@prod "):
+            if dev:
+                continue
+            line = line[len("@prod "):]
+        elif line.startswith("@dev "):
+            if not dev:
+                continue
+            line = line[len("@dev "):]
         if line.startswith("@include "):
             read(re.sub(r"\{\{([A-Z0-9_]+)\}\}", fill, line.split(None, 1)[1].strip()))
             continue

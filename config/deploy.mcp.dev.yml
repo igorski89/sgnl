@@ -1,0 +1,20 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.mcp.yml. arm64, the dev certificate, the dev CA trusted.
+builder:
+  arch: arm64
+# The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+proxy:
+  ssl:
+    certificate_pem: SGNL_TLS_CERT_PEM
+    private_key_pem: SGNL_TLS_KEY_PEM
+volumes:
+  - "sgnl_mcp_audit:/data"
+  - "/opt/sgnl/dev-ca/ca.pem:/etc/ssl/certs/sgnl-dev-ca.pem:ro"
+env:
+  clear:
+    SSL_CERT_FILE: /etc/ssl/certs/sgnl-dev-ca.pem

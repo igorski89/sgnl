@@ -13,4 +13,6 @@
 #   docker tag stalwart-sgnl:v1.1.1-sgnl.2 localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2
 #   docker push localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2
 # Back to upstream: FROM stalwartlabs/stalwart:v1.1.1 (same data, no migration).
-FROM localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2
+# Dev VMs on the Mac (config/deploy.stalwart.dev.yml) pass the arm64 build.
+ARG STALWART_IMAGE=localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2
+FROM ${STALWART_IMAGE}

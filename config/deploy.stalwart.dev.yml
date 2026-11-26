@@ -1,0 +1,52 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.stalwart.yml. arm64, the dev certificate on kamal-proxy, the dev
+# CA trusted, and Mailpit as the smart host instead of SES: it accepts
+# every mail (STARTTLS on 587, any login) and shows them at
+# https://mailpit.<apps>; nothing leaves the VM (also blocked there).
+builder:
+  arch: arm64
+  args:
+    STALWART_IMAGE: localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2-arm64
+# The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+proxy:
+  ssl:
+    certificate_pem: SGNL_TLS_CERT_PEM
+    private_key_pem: SGNL_TLS_KEY_PEM
+volumes:
+  - "sgnl_stalwart_v1:/var/lib/stalwart"
+  - "/opt/sgnl/stalwart/config.json:/etc/stalwart/config.json:ro"
+  - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"
+env:
+  clear:
+    SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+accessories:
+  mailpit:
+    service: sgnl-mailpit
+    image: axllent/mailpit:v1.27
+    host: <%= ENV.fetch("SGNL_HOST") %>
+    options:
+      network-alias: sgnl-mailpit
+    env:
+      clear:
+        MP_SMTP_BIND_ADDR: "0.0.0.0:587"
+        MP_SMTP_AUTH_ACCEPT_ANY: "1"
+        MP_SMTP_REQUIRE_STARTTLS: "1"
+        MP_SMTP_TLS_CERT: /certs/tls.crt
+        MP_SMTP_TLS_KEY: /certs/tls.key
+        MP_MAX_MESSAGES: "5000"
+    volumes:
+      - "/opt/sgnl/dev-ca/tls.crt:/certs/tls.crt:ro"
+      - "/opt/sgnl/dev-ca/tls.key:/certs/tls.key:ro"
+    proxy:
+      host: mailpit.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+      app_port: 8025
+      ssl:
+        certificate_pem: SGNL_TLS_CERT_PEM
+        private_key_pem: SGNL_TLS_KEY_PEM
+      healthcheck:
+        path: /livez

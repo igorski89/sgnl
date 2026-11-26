@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Throw-away SGNL environments in a Lima VM on the operator's Mac
+# (instance/docs/PLAN-dev-env.md). The dev instance is instance.dev/
+# (private .test names, own CA, generated secrets, Mailpit for mail);
+# nothing here can reach prod's vault, DNS, mail or backups.
+#
+#   bin/sgnl-dev up           create + start the VM, CA, secrets, VM prep
+#   bin/sgnl-dev kamal ...    Kamal against the VM: -d dev, dev secrets
+#   bin/sgnl-dev run <cmd>    any repo tool against the dev instance
+#   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
+#   bin/sgnl-dev stop | start
+#   bin/sgnl-dev destroy      delete the VM and its secrets/CA (asks)
+#
+# Env: SGNL_DEV_NAME (default sgnl-dev), SGNL_DEV_SSH_PORT (default 60022).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+NAME=${SGNL_DEV_NAME:-sgnl-dev}
+PORT=${SGNL_DEV_SSH_PORT:-60022}
+STATE=$HOME/.sgnl-dev
+ENVDIR=$STATE/$NAME
+export SGNL_INSTANCE_DIR=instance.dev
+export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
+export CAROOT=$STATE/ca
+source lib/instance.sh
+[[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
+
+secrets_file() {
+  # Kamal reads .kamal/secrets.dev for -d dev: the shared names plus the
+  # dev certificate (kamal-proxy's custom TLS). Generated, not in git.
+  { cat .kamal/secrets
+    echo 'SGNL_TLS_CERT_PEM=$(bin/sgnl-secret tls-cert-pem)'
+    echo 'SGNL_TLS_KEY_PEM=$(bin/sgnl-secret tls-key-pem)'; } > .kamal/secrets.dev
+}
+
+ca_and_cert() {
+  install -d -m 700 "$STATE" "$CAROOT" "$ENVDIR"
+  if [[ ! -s $ENVDIR/tls.crt ]]; then
+    (cd "$ENVDIR" && mkcert -cert-file tls.crt -key-file tls.key "*.$SGNL_APPS_DOMAIN" "$SGNL_APPS_DOMAIN" \
+      "$SGNL_DOMAIN" "*.$SGNL_DOMAIN" sgnl-mailpit >/dev/null 2>&1)
+    chmod 600 "$ENVDIR/tls.key"
+  fi
+  bin/sgnl-dev-secrets "$ENVDIR/secrets.csv"
+  python3 - "$ENVDIR" "$CAROOT" "$SGNL_PREFIX" <<'PY'
+import csv, os, sys
+d, ca, prefix = sys.argv[1:]
+p = d + "/secrets.csv"
+rows = {r["Username"]: r["Password"] for r in csv.DictReader(open(p))}
+rows[prefix + "-tls-cert-pem"] = open(d + "/tls.crt").read() + open(ca + "/rootCA.pem").read()
+rows[prefix + "-tls-key-pem"] = open(d + "/tls.key").read()
+os.umask(0o077)
+with open(p + ".tmp", "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=["Username", "Password"]); w.writeheader()
+    for k in sorted(rows): w.writerow({"Username": k, "Password": rows[k]})
+os.replace(p + ".tmp", p)
+PY
+}
+
+ssh_alias() {
+  cat > "$STATE/ssh_config" <<EOF
+# SGNL dev VMs (bin/sgnl-dev). Lima forwards the VM's SSH to localhost.
+Host $NAME
+  HostName 127.0.0.1
+  Port $PORT
+  User root
+  IdentityFile $HOME/.lima/_config/user
+  IdentitiesOnly yes
+  UserKnownHostsFile $HOME/.sgnl-dev/known_hosts
+  StrictHostKeyChecking accept-new
+EOF
+  if ! grep -q "~/.sgnl-dev/ssh_config" ~/.ssh/config 2>/dev/null; then
+    { printf '# Added for SGNL dev VMs (bin/sgnl-dev); remove this line to undo.\nInclude ~/.sgnl-dev/ssh_config\n\n'; cat ~/.ssh/config 2>/dev/null; } > ~/.ssh/config.new
+    mv ~/.ssh/config.new ~/.ssh/config
+  fi
+}
+
+case ${1:-} in
+  up)
+    command -v limactl >/dev/null && command -v mkcert >/dev/null || { echo "brew install lima mkcert" >&2; exit 1; }
+    if ! limactl list -q 2>/dev/null | grep -qx "$NAME"; then
+      sed "s/@SSH_PORT@/$PORT/" host/dev/lima.yaml > "$STATE/$NAME.yaml"
+      limactl create --name "$NAME" --tty=false "$STATE/$NAME.yaml"
+    fi
+    limactl start "$NAME" >/dev/null
+    ssh_alias
+    ca_and_cert
+    secrets_file
+    scp -q host/dev/vm-prep.sh "$NAME:/root/vm-prep.sh"
+    ssh "$NAME" "bash /root/vm-prep.sh $SGNL_DOMAIN" < "$CAROOT/rootCA.pem"
+    scp -q "$ENVDIR/tls.crt" "$ENVDIR/tls.key" "$NAME:/opt/sgnl/dev-ca/"
+    ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
+    echo "up: $NAME. Next: bin/sgnl-dev hosts (once), then deploy with bin/sgnl-dev kamal ..." ;;
+  kamal)
+    shift; secrets_file
+    exec bin/sgnl-env kamal "$@" -d dev ;;
+  run)
+    shift; secrets_file
+    exec bin/sgnl-env "$@" ;;
+  hosts)
+    hosts=""
+    for h in id mail mcp drive office inbox vault git home monitor listmonk mailpit; do hosts+=" $h.$SGNL_APPS_DOMAIN"; done
+    echo "127.0.0.1$hosts" ;;
+  stop) limactl stop "$NAME" ;;
+  start) limactl start "$NAME" ;;
+  destroy)
+    read -r -p "Delete VM $NAME and $ENVDIR (secrets, certificate)? type $NAME: " a
+    [[ $a == "$NAME" ]] || { echo "not deleted"; exit 1; }
+    limactl delete -f "$NAME"; rm -rf "${ENVDIR:?}"; echo "deleted $NAME" ;;
+  *) sed -n 2,16p "$0"; exit 1 ;;
+esac

@@ -1,0 +1,17 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.id.yml. arm64 for the Mac's VM; the dev CA trusted (Mailpit's TLS).
+builder:
+  arch: arm64
+# The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+volumes:
+  - "sgnl_id_data:/data"
+  - "/opt/sgnl/id/configuration.yml:/config/configuration.yml:ro"
+  - "/opt/sgnl/dev-ca/ca.pem:/etc/ssl/certs/sgnl-dev-ca.pem:ro"
+env:
+  clear:
+    SSL_CERT_FILE: /etc/ssl/certs/sgnl-dev-ca.pem

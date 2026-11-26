@@ -1,0 +1,13 @@
+# Optional: this company's own start-page sections, appended after the
+# generic SGNL tiles (dashy/conf.yml). Same format as the template's
+# `sections:` entries, two-space indent. Placeholders like {{SGNL_DOMAIN}}
+# are filled in. Example:
+#
+#  - name: Our tools
+#    icon: fas fa-toolbox
+#    displayData:
+#      showForGroups: [sgnl_users]
+#    items:
+#      - title: Website
+#        url: https://{{SGNL_DOMAIN}}
+#        icon: fas fa-globe

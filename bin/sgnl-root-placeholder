@@ -13,11 +13,19 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/instance.sh"
 [[ $# -ge 2 ]] || { sed -n 2,13p "$0"; exit 1; }
 name=$1 host=$2.$SGNL_APPS_DOMAIN replace=${3:-}
+# A dev instance (bin/sgnl-dev) has no public ACME: the dev certificate,
+# copied into kamal-proxy's config dir.
+tls="--tls" prep=""
+if [[ ${SGNL_ENV:-} == dev ]]; then
+  prep="mkdir -p /root/.kamal/proxy/apps-config/dev-tls && cp /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key /root/.kamal/proxy/apps-config/dev-tls/"
+  tls="--tls --tls-certificate-path /home/kamal-proxy/.apps-config/dev-tls/tls.crt --tls-private-key-path /home/kamal-proxy/.apps-config/dev-tls/tls.key"
+fi
 ssh "root@$SGNL_HOST" "set -e
+  $prep
   docker rm -f $name >/dev/null 2>&1 || true
   docker run -d --name $name --network kamal --restart unless-stopped --memory 16m busybox:1.37 \
     sh -c 'mkdir -p /www && echo ok > /www/up && exec httpd -f -p 8080 -h /www' >/dev/null
   ${replace:+docker exec kamal-proxy kamal-proxy remove $replace}
-  docker exec kamal-proxy kamal-proxy deploy $name --target $name:8080 --host $host --tls \
+  docker exec kamal-proxy kamal-proxy deploy $name --target $name:8080 --host $host $tls \
     --health-check-path /up --deploy-timeout 60s >/dev/null
   echo up: $name, root of $host"

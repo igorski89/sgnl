@@ -20,3 +20,6 @@ __pycache__/
 
 # The instance (its own private repo, see docs/ARCHITECTURE.md "Your instance").
 /instance/
+
+# bin/sgnl-dev: generated secrets file for -d dev
+.kamal/secrets.dev

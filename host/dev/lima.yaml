@@ -1,0 +1,25 @@
+# SGNL dev VM (bin/sgnl-dev up): Ubuntu 24.04 like prod, Apple Virtualization.
+# The Mac reaches it through Lima's localhost forwards (SSH on ssh.localPort,
+# 443 and every other published port), which needs no extra permissions.
+base: template:ubuntu-24.04
+vmType: vz
+cpus: 4
+memory: 8GiB
+disk: 30GiB
+ssh:
+  localPort: @SSH_PORT@
+# Isolation: no folders of the Mac inside the VM.
+mounts: []
+containerd:
+  system: false
+  user: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      # Kamal deploys as root over SSH, as on prod: authorise the Lima user's key for root.
+      install -d -m 700 /root/.ssh
+      cat /home/*/.ssh/authorized_keys > /root/.ssh/authorized_keys
+      chmod 600 /root/.ssh/authorized_keys
+      command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh

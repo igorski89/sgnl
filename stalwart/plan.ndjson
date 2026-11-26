@@ -32,21 +32,23 @@
 # Manual, so Stalwart never touches its MX/SPF/DMARC (those belong to
 # SES, see docs/DNS.md). The certificate covers exactly
 # mail.sgnl.example.com.
-{"@type":"upsert","object":"DnsServer","matchOn":["description"],"value":{"cloudflare":{"@type":"Cloudflare","description":"cloudflare-{{SGNL_ORG_SLUG}}","secret":{"@type":"Value","secret":"{{CLOUDFLARE_API_TOKEN}}"}}}}
-{"@type":"upsert","object":"AcmeProvider","matchOn":["directory"],"value":{"letsencrypt":{"directory":"{{ACME_DIRECTORY}}","challengeType":"Dns01","contact":{"postmaster@{{SGNL_DOMAIN}}":true},"description":"{{ACME_DIRECTORY}}"}}}
+@prod {"@type":"upsert","object":"DnsServer","matchOn":["description"],"value":{"cloudflare":{"@type":"Cloudflare","description":"cloudflare-{{SGNL_ORG_SLUG}}","secret":{"@type":"Value","secret":"{{CLOUDFLARE_API_TOKEN}}"}}}}
+@prod {"@type":"upsert","object":"AcmeProvider","matchOn":["directory"],"value":{"letsencrypt":{"directory":"{{ACME_DIRECTORY}}","challengeType":"Dns01","contact":{"postmaster@{{SGNL_DOMAIN}}":true},"description":"{{ACME_DIRECTORY}}"}}}
 
 # --- Domains --------------------------------------------------------
 # DKIM is Manual on both: outbound goes through SES, which signs with
 # Easy DKIM (aws/ses.tf). Stalwart signing too would need its own keys
 # published in DNS for no benefit.
 {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"mail-domain":{"name":"{{SGNL_DOMAIN}}","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Manual"},"certificateManagement":{"@type":"Manual"},"reportAddressUri":"mailto:postmaster@{{SGNL_DOMAIN}}","catchAllAddress":"admin@{{SGNL_DOMAIN}}"}}}
-{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"cert-domain":{"name":"{{SGNL_APPS_DOMAIN}}","description":"TLS certificate only - no mailboxes","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Automatic","dnsServerId":"#cloudflare","origin":"{{SGNL_DOMAIN}}","publishRecords":{"tlsRpt":true}},"certificateManagement":{"@type":"Automatic","acmeProviderId":"#letsencrypt","subjectAlternativeNames":{"mail.{{SGNL_APPS_DOMAIN}}":true}}}}}
+@prod {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"cert-domain":{"name":"{{SGNL_APPS_DOMAIN}}","description":"TLS certificate only - no mailboxes","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Automatic","dnsServerId":"#cloudflare","origin":"{{SGNL_DOMAIN}}","publishRecords":{"tlsRpt":true}},"certificateManagement":{"@type":"Automatic","acmeProviderId":"#letsencrypt","subjectAlternativeNames":{"mail.{{SGNL_APPS_DOMAIN}}":true}}}}}
+# Dev (bin/sgnl-dev): the same domain without Cloudflare or ACME.
+@dev {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"cert-domain":{"name":"{{SGNL_APPS_DOMAIN}}","description":"TLS certificate only - no mailboxes","dkimManagement":{"@type":"Manual"},"dnsManagement":{"@type":"Manual"},"certificateManagement":{"@type":"Manual"}}}}
 
 # --- Outbound: everything non-local relays through SES on 587 with
 # STARTTLS *required* (TLS strategy "ses-starttls" below, no fallback to
 # invalid certificates). Not 465: Hetzner Cloud blocks outgoing 25 and
 # 465 by default (checked 2026-10-08: SES answers on 587/2587 only).
-{"@type":"upsert","object":"MtaRoute","matchOn":["name"],"value":{"ses":{"@type":"Relay","name":"ses","description":"AWS SES smart host (eu-central-1)","host":"email-smtp.eu-central-1.amazonaws.com","port":587,"implicitTls":false,"allowInvalidCerts":false,"protocol":"smtp","authUsername":"{{AWS_SES_SMTP_USERNAME}}","authSecret":{"@type":"Value","secret":"{{AWS_SES_SMTP_PASSWORD}}"}}}}
+{"@type":"upsert","object":"MtaRoute","matchOn":["name"],"value":{"ses":{"@type":"Relay","name":"ses","description":"AWS SES smart host (eu-central-1)","host":"{{SGNL_SMTP_HOST}}","port":587,"implicitTls":false,"allowInvalidCerts":false,"protocol":"smtp","authUsername":"{{AWS_SES_SMTP_USERNAME}}","authSecret":{"@type":"Value","secret":"{{AWS_SES_SMTP_PASSWORD}}"}}}}
 {"@type":"upsert","object":"MtaTlsStrategy","matchOn":["name"],"value":{"ses-starttls":{"name":"ses-starttls","description":"SES relay: STARTTLS required, valid certificate","startTls":"require","allowInvalidCerts":false,"dane":"disable","mtaSts":"disable"}}}
 
 # --- Accounts ---------------------------------------------------------
