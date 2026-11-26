@@ -118,7 +118,8 @@ case ${1:-} in
     export PLAYWRIGHT_CORE
     # username|display name|groups (sgnl_users always). Their mailboxes are in
     # instance.dev/stalwart/mailboxes.ndjson.
-    for p in "alice|Alice Admin|admins developers mcp_users" "bob|Bob Example|mcp_users"; do
+    for p in "alice|Alice Admin|admins developers mcp_users" "bob|Bob Example|mcp_users" \
+             "sgnl-smoke|SGNL Smoke|mcp_users" "sgnl-smoke2|SGNL Smoke Two|mcp_users"; do
       IFS='|' read -r u n g <<<"$p"
       [[ -s $ENVDIR/people/$u.passkey.json ]] && { echo "$u: already set up"; continue; }
       bin/sgnl-env bin/sgnl-id show "$u" >/dev/null 2>&1 || bin/sgnl-env bin/sgnl-id add-user "$u" "$n" >/dev/null

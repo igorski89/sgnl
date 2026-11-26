@@ -13,3 +13,9 @@
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alerts-group":{"@type":"Group","name":"alerts","domainId":"#mail-domain","description":"alerts@: monitoring alerts (shared mailbox)"}}}
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"alice":{"@type":"User","name":"alice","domainId":"#mail-domain","description":"Alice Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true},"aliases":{"0":{"name":"postmaster","domainId":"#mail-domain","enable":true}}}}}
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"bob":{"@type":"User","name":"bob","domainId":"#mail-domain","description":"Bob Example","memberGroupIds":{"#admin-group":true,"#alerts-group":true}}}}
+
+# Smoke-test accounts and their shared mailbox (bin/sgnl-dev seed; the
+# MCP smoke runner, instance/docs/PLAN-mcp-smoke.md).
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"sgnl-smoke":{"@type":"User","name":"sgnl-smoke","domainId":"#mail-domain","description":"SGNL Smoke"}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"sgnl-smoke2":{"@type":"User","name":"sgnl-smoke2","domainId":"#mail-domain","description":"SGNL Smoke Two"}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"smoke-group":{"@type":"Group","name":"smoke","domainId":"#mail-domain","description":"SGNL smoke test"}}}
