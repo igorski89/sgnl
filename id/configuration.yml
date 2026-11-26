@@ -442,6 +442,20 @@ identity_providers:
         audience: ['https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'one_factor'
+      # The gateway's admin client for CHANGES (2026-11-26): invite, groups,
+      # logout, disable/enable, each confirmed by an admin in the AI app.
+      # Separate from the read-only client so write can be switched off
+      # alone (unset the gateway's SGNL_MCP_ADMIN_WRITE_* env).
+      - client_id: 'sgnl-mcp-admin-write'
+        client_name: 'SGNL MCP gateway (admin tools, changes)'
+        client_secret: '{{ env "SGNL_ID_MCP_ADMIN_WRITE_CLIENT_SECRET_HASH_B64" | b64dec }}'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read', 'authelia.admin.write']
+        audience: ['https://id.{{SGNL_APPS_DOMAIN}}/realms/{{SGNL_REALM}}/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
       # MCP gateway (instance/docs/PLAN-mcp.md). Claude Code logs in here
       # (PKCE, loopback); its token is for the gateway (aud sgnl-mcp) only.
       - client_id: 'sgnl-mcp-claude-code'
