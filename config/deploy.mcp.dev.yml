@@ -2,6 +2,8 @@
 # deploy.mcp.yml. arm64, the dev certificate, the dev CA trusted.
 builder:
   arch: arm64
+  args:
+    SGNL_MCP_IMAGE: ghcr.io/igorski89/sgnl-mcp:v0.1.33
 # The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
 ssh:
   user: root
