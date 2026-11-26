@@ -206,8 +206,15 @@ Shared addresses are Stalwart **Groups** (decided 2026-10-09; not mailing
 lists): one mailbox, members open it next to their own. `admin@` is one,
 and it's also the domain catch-all (`Domain.catchAllAddress`): mail to
 any unknown @example.com address (typos, hello@, spam to made-up
-names) lands there. Members: `"memberGroupIds":{"#admin-group":true}` on
-the user's line in `stalwart/plan.ndjson`, then `bin/stalwart-apply`.
+names) lands there.
+
+**Members and aliases live on the mail server, not in git** (since
+2026-11-26): the plan only creates accounts and groups, so
+`bin/stalwart-apply` never reverts a membership. Change them by asking an
+AI app on the admin connection ("add anna to contact@", "give anna the
+address sales@", each confirmed; `docs/admin-guide.md`), or with
+`stalwart-cli update Account <id> --json '{"memberGroupIds":{…}}'`
+(the whole map: it replaces the old value).
 A new group: a `"@type":"Group"` Account line like `admin-group`.
 Its `description` is the **sender name** people see on mail sent as the
 group (e.g. "Example Ltd"), so keep it presentable. Stalwart copies it
@@ -361,7 +368,7 @@ script prints this list.
 - **Mail apps:** app passwords don't go through the login server. Delete
   them, or the account, in Stalwart (`stalwart-cli query AppPassword` while
   impersonating, or delete the account once its mail is exported).
-- **Groups:** remove the `#…-group` entries from their `memberGroupIds`.
+- **Groups:** remove them from the shared mailboxes (AI admin tools, or `stalwart-cli`; members aren't in the plan).
 - **Forgejo:** git tokens don't go through the login server either. Disable the
   account: Forgejo → Site administration → User accounts → edit →
   "Disable sign-in" (and delete their tokens), or delete the user once
