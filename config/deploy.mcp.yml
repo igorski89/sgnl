@@ -40,6 +40,7 @@ env:
   secret:
     - SGNL_MCP_CLIENT_SECRET
     - SGNL_MCP_ADMIN_CLIENT_SECRET
+    - SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET
   clear:
     SGNL_MCP_LABEL: "SGNL - <%= ENV.fetch("SGNL_DOMAIN") %>"
     SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
@@ -61,6 +62,10 @@ env:
     # group admins (current view) gets in.
     SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
     SGNL_MCP_ADMIN_GROUPS: admins
+    # Admin CHANGES (2026-11-26): invite, groups, logout, disable/enable, each
+    # confirmed by an admin. Unset both to switch changes off (read stays).
+    SGNL_MCP_ADMIN_WRITE_CLIENT_ID: sgnl-mcp-admin-write
+    SGNL_MCP_ADMIN_USER_DOMAIN: <%= ENV.fetch("SGNL_DOMAIN") %>
     # AI apps that may send mail or share after the confirmation dialog;
     # any other client can't. Codex is included (decided 2026-11-25): in its
     # no-approval mode it answers the dialog itself, which is the person's own
