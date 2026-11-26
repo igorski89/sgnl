@@ -24,8 +24,12 @@ ACCT=mcp-gateway@$SGNL_DOMAIN
 ITEM=stalwart-mcp-gateway-api-key
 DESC="MCP gateway (read-only admin)"
 EXTRA=""
+KEYPERMS=""
 if [[ ${1:-} == --write ]]; then
   ITEM=stalwart-mcp-gateway-write-api-key; DESC="MCP gateway (admin changes)"; EXTRA=',"sysAccountUpdate":true'
+  # The write key inherits the account's permissions (role User + Merge,
+  # stalwart/plan.ndjson): Stalwart's grant check needs all of them.
+  KEYPERMS='{"@type":"Inherit"}'
 fi
 READ='"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true'
 # The server's public address, plus Docker's private ranges (the gateway
@@ -43,10 +47,11 @@ set_perms() {
   as_admin update Account "$id" --json "{\"permissions\":{\"@type\":\"Replace\",\"enabledPermissions\":{$READ,\"sysAccountUpdate\":true$1},\"disabledPermissions\":{}}}" >/dev/null
 }
 set_perms ',"sysApiKeyCreate":true,"sysApiKeyQuery":true,"sysApiKeyGet":true,"sysApiKeyDestroy":true'
-trap 'set_perms ""; echo "mcp-gateway permissions restored (read + account update)"' EXIT
+trap 'set_perms ""; echo "mcp-gateway permissions restored (role User + read + account update)"' EXIT
 
 old=$(as_acct query ApiKey | awk -v d="$DESC" 'NR>1 && index($0,d) {print $1}' | paste -sd, -)
-out=$(as_acct create ApiKey --json "{\"description\":\"$DESC\",\"expiresAt\":\"$EXPIRES\",\"allowedIps\":$IPS,\"permissions\":{\"@type\":\"Replace\",\"permissions\":{$READ$EXTRA}}}")
+[[ -n $KEYPERMS ]] || KEYPERMS="{\"@type\":\"Replace\",\"permissions\":{$READ$EXTRA}}"
+out=$(as_acct create ApiKey --json "{\"description\":\"$DESC\",\"expiresAt\":\"$EXPIRES\",\"allowedIps\":$IPS,\"permissions\":$KEYPERMS}")
 secret=$(grep -o 'API_[A-Za-z0-9_-]*' <<<"$out" | head -1)
 [[ ${#secret} -ge 20 ]] || { echo "could not read the new key from stalwart-cli output:" >&2; sed -E 's/API_[A-Za-z0-9_-]+/API_…/g' <<<"$out" >&2; exit 1; }
 printf '%s' "$secret" | bin/sgnl-secret --set "$ITEM"

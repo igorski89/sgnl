@@ -61,12 +61,17 @@
 # can't be set. App passwords keep working while Keycloak is down.
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"ses-relay":{"@type":"User","name":"ses-relay","domainId":"#mail-domain","description":"SES inbound relay (Lambda) - machine account","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"emailSend":true,"sysOAuthGrantGet":true,"sysOAuthGrantQuery":true,"sysOAuthGrantDestroy":true}}}}}
 # The MCP gateway's machine account for the admin tools (2026-11-26):
-# Reads accounts, domains and the outbound queue (no mail, no blobs), and
-# may update accounts (sysAccountUpdate) for the confirmed mail admin
-# changes: the gateway limits that to group members, aliases and quotas.
-# Two API keys (bin/stalwart-mcp-api-key [--write]), each usable only from
-# the server: the read key is read-only; the write key adds the update.
-{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (read-only admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true}}}}}
+# Reads accounts, domains and the outbound queue (no mail, no blobs) and
+# may update accounts (sysAccountUpdate). Mail admin CHANGES don't work
+# yet: Stalwart 1.1.1 lets an account change another account only if it
+# holds all of that account's permissions (grant check on every update),
+# i.e. the whole User role, and with the User role this account could SEND
+# mail via JMAP: the MtaStageMail/MtaStageRcpt rules below did NOT stop a
+# JMAP EmailSubmission (tested 2026-11-26, rolled back). TODO: a real block
+# for JMAP submission, or the Stalwart fork + upstream PR.
+# Two API keys, usable only from the server (bin/stalwart-mcp-api-key
+# [--write]): the read key is a fixed read-only list; the write key inherits.
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (mail admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true}}}}}
 # People and shared mailboxes: per instance.
 @include {{SGNL_INSTANCE_DIR}}/stalwart/mailboxes.ndjson
 
@@ -78,7 +83,12 @@
 # Relaying (= delivering to non-local recipients) is for logged-in humans
 # only. The relay account can deliver to local mailboxes and nothing
 # else, so a leaked relay app password can't send mail out through SES.
-{"@type":"update","object":"MtaStageRcpt","value":{"allowRelaying":{"match":{"0":{"if":"authenticated_as == 'ses-relay@{{SGNL_DOMAIN}}'","then":"false"}},"else":"!is_empty(authenticated_as)"}}}
+{"@type":"update","object":"MtaStageRcpt","value":{"allowRelaying":{"match":{"0":{"if":"authenticated_as == 'ses-relay@{{SGNL_DOMAIN}}'","then":"false"},"1":{"if":"authenticated_as == 'mcp-gateway@{{SGNL_DOMAIN}}'","then":"false"}},"else":"!is_empty(authenticated_as)"}}}
+# The MCP gateway's machine account may not send mail: refused at MAIL
+# FROM over SMTP. NOTE: this does not apply to JMAP submissions (tested
+# 2026-11-26); the account has no mail permissions, which is the real block.
+# The else-branch is Stalwart's default.
+{"@type":"update","object":"MtaStageMail","value":{"isSenderAllowed":{"match":{"0":{"if":"authenticated_as == 'mcp-gateway@{{SGNL_DOMAIN}}'","then":"false"}},"else":"!is_empty(authenticated_as) || !key_exists('spam-block', sender_domain)"}}}
 # Run the spam filter on relayed inbound mail too (by default it skips
 # authenticated sessions). SPF/DMARC checks stay off for non-25 ports
 # (SenderAuth defaults); SES already ran those and the Lambda adds
