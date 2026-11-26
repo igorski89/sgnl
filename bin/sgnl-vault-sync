@@ -13,7 +13,7 @@ What it does:
   2. Members + groups -> Vaultwarden through the organisation import
      (Bitwarden "Directory Connector" API, organisation API key): new
      people are invited by email, disabled ones revoked, people no longer
-     in any listed group removed; group membership is set exactly.
+     in any listed group (or listed under exclude:) removed; group membership is set exactly.
      Owners are never revoked or removed.
   3. Collections: creates missing ones, sets each listed collection's
      group access. Collections not in org.yaml are left alone.
@@ -133,6 +133,10 @@ def main():
         sys.exit(__doc__)
     c = load_config()
     by_group = keycloak_members(c["groups"])
+    # exclude: login-server accounts that are never members (test accounts
+    # that need sgnl_users for the apps but must not see company passwords).
+    skip = set(c.get("exclude") or [])
+    by_group = {g: [u for u in us if u["username"] not in skip] for g, us in by_group.items()}
     people = {u["username"]: u for us in by_group.values() for u in us}
 
     print(f"Login server: {len(people)} people in {', '.join(c['groups'].values())}")
