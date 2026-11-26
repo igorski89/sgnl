@@ -321,6 +321,7 @@ accessories:
       -external.url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
     files:
       - monitoring/vmalert-logs/rules/proxy.yml:/etc/vmalert/sgnl/proxy.yml:ro
+      - monitoring/vmalert-logs/rules/mcp.yml:/etc/vmalert/sgnl/mcp.yml:ro
     volumes:
       - "/root/<%= ENV.fetch("SGNL_COTENANT") %>-monitoring/log-rules:/etc/vmalert/<%= ENV.fetch("SGNL_COTENANT") %>:ro"
     options:

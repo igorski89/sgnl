@@ -1,0 +1,14 @@
+# MCP gateway log rules (vmalert-logs, LogsQL). The gateway's audit trail
+# (SQLite, instance docs PLAN-mcp-audit) logs "audit write failed" at ERROR
+# when a row can't be written. Admin CHANGES then refuse to run (fail
+# closed); everything else keeps working without its audit row.
+groups:
+  - name: mcp
+    type: vlogs
+    interval: 5m
+    rules:
+      - alert: McpAuditWriteFailing
+        expr: 'service:"sgnl-mcp" "audit write failed" | stats count() as failures | filter failures:>=1'
+        labels: { severity: critical }
+        annotations:
+          summary: "MCP gateway: {{ $value }} audit write failure(s) in 5 min: admin changes through AI apps are blocked (disk full? volume? Grafana > Logs org: service:sgnl-mcp \"audit write failed\")"
