@@ -78,3 +78,30 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "No host journal lines reached Vector in the last hour (docker logs sgnl-vector | grep journal)"
+
+  # Backups (host/backup/sgnl-backup.sh writes the timestamps through
+  # node-exporter's textfile collector). Closes the dead-man gap: a timer
+  # that silently stopped sends no failure mail, but this fires.
+  - name: backups
+    rules:
+      - alert: BackupMissing
+        expr: time() - max(sgnl_backup_last_success_timestamp_seconds{job="node"}) > 26 * 3600
+        for: 30m
+        labels: { severity: critical }
+        annotations:
+          summary: "No successful nightly backup for {{ $value | humanizeDuration }} (journalctl -u sgnl-backup)"
+
+      - alert: BackupMetricAbsent
+        expr: absent(sgnl_backup_last_success_timestamp_seconds{job="node"})
+        for: 26h
+        labels: { severity: warning }
+        annotations:
+          summary: "No backup timestamp in the metrics for 26 h: the backup never succeeded since install, or node-exporter's textfile collector is broken"
+
+      # The drill (bin/sgnl-backup-restore-test-all) is monthly.
+      - alert: RestoreDrillOverdue
+        expr: time() - max(sgnl_restore_drill_last_success_timestamp_seconds{job="node"}) > 40 * 86400
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "Last full restore drill was {{ $value | humanizeDuration }} ago: run bin/sgnl-backup-restore-test-all"

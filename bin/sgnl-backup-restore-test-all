@@ -19,4 +19,14 @@ for t in bin/sgnl-backup-restore-test bin/sgnl-backup-restore-test-*; do
   fi
 done
 echo; echo "===== summary"; printf '%s\n' "${results[@]}"
+# A full pass is recorded on the host for monitoring (node-exporter
+# textfile; the MCP gateway's ops_backups, rule RestoreDrillOverdue).
+if (( failed == 0 )); then
+  ( source lib/instance.sh
+    ssh "root@$SGNL_HOST" 'd=/var/lib/node_exporter/textfile; mkdir -p $d && printf "%s\n" \
+      "# HELP sgnl_restore_drill_last_success_timestamp_seconds Last restore drill where every app restored." \
+      "# TYPE sgnl_restore_drill_last_success_timestamp_seconds gauge" \
+      "sgnl_restore_drill_last_success_timestamp_seconds $(date +%s)" > $d/sgnl_restore_drill.prom.tmp && mv $d/sgnl_restore_drill.prom.tmp $d/sgnl_restore_drill.prom'
+  ) && echo "recorded on the host for monitoring" || echo "warning: couldn't record the drill on the host"
+fi
 exit $failed

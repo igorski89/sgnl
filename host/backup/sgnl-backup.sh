@@ -53,6 +53,30 @@ notify_failure() {
 }
 trap 'notify_failure "unexpected error at line $LINENO (exit $?)"' ERR
 
+# Timestamps for monitoring (node-exporter textfile collector): the last
+# run and the last success. Rule BackupMissing alerts when the success is
+# older than 26 h; the MCP gateway's ops_backups reads them.
+METRICS=/var/lib/node_exporter/textfile/sgnl_backup.prom
+backup_metric() { # backup_metric run|success
+  local now last_success
+  mkdir -p "$(dirname "$METRICS")"
+  now=$(date +%s)
+  last_success=$(sed -n 's/^sgnl_backup_last_success_timestamp_seconds{job="daily"} //p' "$METRICS" 2>/dev/null || true)
+  [[ $1 == success ]] && last_success=$now
+  {
+    echo '# HELP sgnl_backup_last_run_timestamp_seconds Start of the last nightly backup.'
+    echo '# TYPE sgnl_backup_last_run_timestamp_seconds gauge'
+    if [[ $1 == run ]]; then echo "sgnl_backup_last_run_timestamp_seconds{job=\"daily\"} $now"
+    else sed -n 's/^\(sgnl_backup_last_run_timestamp_seconds.*\)$/\1/p' "$METRICS" 2>/dev/null || true; fi
+    if [[ -n $last_success ]]; then
+      echo '# HELP sgnl_backup_last_success_timestamp_seconds End of the last successful nightly backup.'
+      echo '# TYPE sgnl_backup_last_success_timestamp_seconds gauge'
+      echo "sgnl_backup_last_success_timestamp_seconds{job=\"daily\"} $last_success"
+    fi
+  } > "$METRICS.tmp" && mv "$METRICS.tmp" "$METRICS"
+}
+backup_metric run
+
 restic() { # time-limited, so a stuck restic fails (and emails) instead of hanging
   timeout "${RESTIC_TIMEOUT:-2h}" docker run --rm --env-file "$BASE/restic.env" \
     -v "$STAGING:/staging:ro" \
@@ -144,4 +168,5 @@ if (( age > ${BOOTSTRAP_MAX_AGE_DAYS:-14} )); then
   notify_failure "the bootstrap bundle (repo + secrets) in the backups is $age days old: run bin/sgnl-bootstrap-push on the laptop and check .git/sgnl-bootstrap-push.log"
 fi
 
+backup_metric success
 echo "==> backup complete"

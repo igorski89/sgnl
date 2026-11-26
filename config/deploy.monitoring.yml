@@ -240,6 +240,9 @@ accessories:
       --no-collector.netclass
       --no-collector.sockstat
       --no-collector.arp
+      --collector.textfile.directory=/host/var/lib/node_exporter/textfile
+    # textfile: backup and restore-drill timestamps written by the host
+    # (host/backup/sgnl-backup.sh, bin/sgnl-backup-restore-test-all).
     volumes:
       - "/:/host:ro,rslave"
     options:
