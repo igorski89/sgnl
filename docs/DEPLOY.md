@@ -288,6 +288,30 @@ arm64) after an upgrade test from the previous release;
 `latest`). To upgrade: bump the tag there, take a backup, then
 `bin/sgnl-deploy listmonk` (stop-first: a few seconds down). The database is one SQLite file in the volume `sgnl_listmonk_data`.
 
+Stalwart runs our fork, github.com/igorski89/stalwart (tag
+`v1.1.1-sgnl.2`): upstream plus two small changes that let the MCP
+gateway's read-only machine account change group memberships and quotas
+and create plain groups (FORK.md there). Its image includes upstream's
+enterprise code, whose licence forbids distributing modified builds, so it
+is **never published**: build it on the operator's machine and push it
+only to Kamal's local registry.
+
+```bash
+git -C ../stalwart checkout v1.1.1-sgnl.2
+docker buildx build -f ../stalwart/sgnl/Dockerfile --target gnu --load \
+  --build-arg TARGET=x86_64-unknown-linux-gnu \
+  -t stalwart-sgnl:v1.1.1-sgnl.2 ../stalwart   # native Rust + zig cross-compile; 30-60 min the first time
+docker tag stalwart-sgnl:v1.1.1-sgnl.2 localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2
+docker push localhost:5555/stalwart-sgnl:v1.1.1-sgnl.2   # the registry runs while Kamal is up
+bin/sgnl-deploy stalwart                                  # stop-first
+```
+
+`docker/stalwart/Dockerfile` is a `FROM` of that tag. After a laptop loss
+the image is gone: rebuild it as above, or fall back to
+`FROM stalwartlabs/stalwart:v1.1.1` (same data; only the gateway's mail
+admin changes stop working). On a Stalwart upgrade, rebase the fork first
+(its FORK.md) and rerun its probe.
+
 DNS: `listmonk.sgnl` (DNS.md). Login: straight to the login server (our fork's
 `auto_login`, set by bin/sgnl-listmonk-setup), matched by email to an
 existing listmonk account (no auto-created accounts: add people in
