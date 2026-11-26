@@ -30,6 +30,7 @@ there).
 | OpenCloud | `drive.sgnl.example.com` | Files: storage, sync apps, sharing (replaced the Nextcloud plan, 2026-10-11) |
 | listmonk | `listmonk.sgnl.example.com` | Campaigns and mailing lists: lists, double opt-in, templates; sends through SES with bounce and complaint handling |
 | Collabora Online (CODE) | `office.sgnl.example.com` | Live co-editing of Word/Excel/PowerPoint files inside OpenCloud |
+| Apache Tika | internal only | Extracts the text of Office/PDF files so OpenCloud can search inside them (accessory `tika` of `config/deploy.opencloud.yml`, 1 GB cap, no OCR) |
 | MCP gateway ([sgnl-mcp](https://github.com/igorski89/sgnl-mcp)) | `mcp.sgnl.example.com` | One MCP endpoint (`/mcp`) over the apps for AI clients (Claude Code, claude.ai, Codex): mail, calendar and contacts through Stalwart's JMAP, files through OpenCloud. No data of its own. See "AI apps: the MCP gateway" below |
 
 Exact versions: the `FROM` line of each `docker/<service>/Dockerfile`
