@@ -47,7 +47,7 @@ set_perms() {
   as_admin update Account "$id" --json "{\"permissions\":{\"@type\":\"Replace\",\"enabledPermissions\":{$READ,\"sysAccountUpdate\":true$1},\"disabledPermissions\":{}}}" >/dev/null
 }
 set_perms ',"sysApiKeyCreate":true,"sysApiKeyQuery":true,"sysApiKeyGet":true,"sysApiKeyDestroy":true'
-trap 'set_perms ""; echo "mcp-gateway permissions restored (role User + read + account update)"' EXIT
+trap 'set_perms ""; echo "mcp-gateway permissions restored (read + account update)"' EXIT
 
 old=$(as_acct query ApiKey | awk -v d="$DESC" 'NR>1 && index($0,d) {print $1}' | paste -sd, -)
 [[ -n $KEYPERMS ]] || KEYPERMS="{\"@type\":\"Replace\",\"permissions\":{$READ$EXTRA}}"
