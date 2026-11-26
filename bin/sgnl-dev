@@ -8,6 +8,8 @@
 #   bin/sgnl-dev kamal ...    Kamal against the VM: -d dev, dev secrets
 #   bin/sgnl-dev run <cmd>    any repo tool against the dev instance
 #   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
+#   bin/sgnl-dev seed         test people with password + passkey (no human):
+#                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
 #   bin/sgnl-dev stop | start
 #   bin/sgnl-dev destroy      delete the VM and its secrets/CA (asks)
 #
@@ -23,6 +25,16 @@ export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
 export CAROOT=$STATE/ca
 source lib/instance.sh
 [[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
+
+ca_bundle() {
+  # Tools on the Mac (Python, curl, Ruby) trust the dev CA plus the usual
+  # public roots: one bundle, through SSL_CERT_FILE.
+  local b=$STATE/ca-bundle.pem
+  if [[ ! -s $b || $CAROOT/rootCA.pem -nt $b ]]; then
+    { security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain; cat "$CAROOT/rootCA.pem"; } > "$b.tmp" && mv "$b.tmp" "$b"
+  fi
+  export SSL_CERT_FILE=$b REQUESTS_CA_BUNDLE=$b CURL_CA_BUNDLE=$b
+}
 
 secrets_file() {
   # Kamal reads .kamal/secrets.dev for -d dev: the shared names plus the
@@ -90,15 +102,32 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once), then deploy with bin/sgnl-dev kamal ..." ;;
   kamal)
-    shift; secrets_file
+    shift; secrets_file; ca_bundle
     exec bin/sgnl-env kamal "$@" -d dev ;;
   run)
-    shift; secrets_file
+    shift; secrets_file; ca_bundle
     exec bin/sgnl-env "$@" ;;
   hosts)
     hosts=""
     for h in id mail mcp drive office inbox vault git home monitor listmonk mailpit; do hosts+=" $h.$SGNL_APPS_DOMAIN"; done
     echo "127.0.0.1$hosts" ;;
+  seed)
+    secrets_file; ca_bundle
+    export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem SGNL_NO_VAULT_SYNC=1   # no Vaultwarden in the spike
+    : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
+    export PLAYWRIGHT_CORE
+    # username|display name|groups (sgnl_users always). Their mailboxes are in
+    # instance.dev/stalwart/mailboxes.ndjson.
+    for p in "alice|Alice Admin|admins developers mcp_users" "bob|Bob Example|mcp_users"; do
+      IFS='|' read -r u n g <<<"$p"
+      [[ -s $ENVDIR/people/$u.passkey.json ]] && { echo "$u: already set up"; continue; }
+      bin/sgnl-env bin/sgnl-id show "$u" >/dev/null 2>&1 || bin/sgnl-env bin/sgnl-id add-user "$u" "$n" >/dev/null
+      # shellcheck disable=SC2086
+      bin/sgnl-env bin/sgnl-id add-to-group "$u" sgnl_users $g >/dev/null
+      bin/sgnl-env bin/sgnl-id setup-email "$u" 2 >/dev/null
+      sleep 2
+      node host/dev/seed-person.mjs "$u" "$SGNL_DOMAIN" "$SGNL_APPS_DOMAIN" "$ENVDIR/people"
+    done ;;
   stop) limactl stop "$NAME" ;;
   start) limactl start "$NAME" ;;
   destroy)
