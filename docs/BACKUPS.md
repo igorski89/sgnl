@@ -13,7 +13,7 @@ Nightly, encrypted, off-site. Live since 2026-10-08 (first snapshot
 | Retention | every snapshot of the last 35 days, then 13 weekly, 12 monthly. Nightly `forget`; `prune` (deletes data) only on the 15th of each month, so it never tries to delete packs younger than the 30-day lock. (`--keep-daily` + nightly prune did, and hung on the locked deletes, 2026-10-09.) A prune failure email mentioning "locked by the bucket policy" is harmless: leftovers from an interrupted run, deleted the next month |
 | Delete protection | R2 bucket lock: `data/` objects can't be deleted for 30 days (tested: `ObjectLockedByBucketPolicy`) |
 | Integrity | `restic check --read-data-subset=5%` every Sunday |
-| Alerts | Any failure emails `owner@personal.example` via SES (tested). **A job that never runs sends nothing.** A healthchecks.io dead-man switch would cover that (TODO) |
+| Alerts | Any failure emails `owner@personal.example` via SES (tested). A job that never runs: the script writes its last success to node-exporter's textfile collector (`/var/lib/node_exporter/textfile/sgnl_backup.prom`), and rule `BackupMissing` alerts after 26 h without one (since 2026-11-26). That alert comes from the same host, so a dead host is still covered only by `HostDown`-style outside checks; a healthchecks.io ping would be the outside dead-man (TODO) |
 
 ## Bootstrap bundle (what's only on the laptop)
 
