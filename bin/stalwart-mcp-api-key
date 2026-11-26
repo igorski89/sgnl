@@ -9,7 +9,9 @@
 # (recovery-admin impersonation), briefly grants the account the
 # sysApiKey* permissions, and always restores its read-only set on exit.
 #
-# Usage: bin/stalwart-mcp-api-key      (then redeploy config/deploy.mcp.yml)
+# Usage: bin/stalwart-mcp-api-key           read-only key
+#        bin/stalwart-mcp-api-key --write   key that may also update accounts
+#        (then redeploy config/deploy.mcp.yml)
 set -euo pipefail
 source "$(dirname "$0")/../lib/instance.sh"
 cd "$(dirname "$0")/.."
@@ -21,6 +23,10 @@ export STALWART_PASSWORD=${STALWART_RECOVERY_ADMIN#*:}
 ACCT=mcp-gateway@$SGNL_DOMAIN
 ITEM=stalwart-mcp-gateway-api-key
 DESC="MCP gateway (read-only admin)"
+EXTRA=""
+if [[ ${1:-} == --write ]]; then
+  ITEM=stalwart-mcp-gateway-write-api-key; DESC="MCP gateway (admin changes)"; EXTRA=',"sysAccountUpdate":true'
+fi
 READ='"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true'
 # The server's public address, plus Docker's private ranges (the gateway
 # container reaches mail.<apps> through kamal-proxy on the same host).
@@ -34,13 +40,13 @@ id=$(as_admin query Account | awk -v a="$ACCT" '$2==a {print $1}')
 [[ -n $id ]] || { echo "account $ACCT not found - run bin/stalwart-apply first" >&2; exit 1; }
 
 set_perms() {
-  as_admin update Account "$id" --json "{\"permissions\":{\"@type\":\"Replace\",\"enabledPermissions\":{$READ$1},\"disabledPermissions\":{}}}" >/dev/null
+  as_admin update Account "$id" --json "{\"permissions\":{\"@type\":\"Replace\",\"enabledPermissions\":{$READ,\"sysAccountUpdate\":true$1},\"disabledPermissions\":{}}}" >/dev/null
 }
 set_perms ',"sysApiKeyCreate":true,"sysApiKeyQuery":true,"sysApiKeyGet":true,"sysApiKeyDestroy":true'
-trap 'set_perms ""; echo "mcp-gateway permissions restored (read-only)"' EXIT
+trap 'set_perms ""; echo "mcp-gateway permissions restored (read + account update)"' EXIT
 
 old=$(as_acct query ApiKey | awk -v d="$DESC" 'NR>1 && index($0,d) {print $1}' | paste -sd, -)
-out=$(as_acct create ApiKey --json "{\"description\":\"$DESC\",\"expiresAt\":\"$EXPIRES\",\"allowedIps\":$IPS,\"permissions\":{\"@type\":\"Replace\",\"permissions\":{$READ}}}")
+out=$(as_acct create ApiKey --json "{\"description\":\"$DESC\",\"expiresAt\":\"$EXPIRES\",\"allowedIps\":$IPS,\"permissions\":{\"@type\":\"Replace\",\"permissions\":{$READ$EXTRA}}}")
 secret=$(grep -o 'API_[A-Za-z0-9_-]*' <<<"$out" | head -1)
 [[ ${#secret} -ge 20 ]] || { echo "could not read the new key from stalwart-cli output:" >&2; sed -E 's/API_[A-Za-z0-9_-]+/API_…/g' <<<"$out" >&2; exit 1; }
 printf '%s' "$secret" | bin/sgnl-secret --set "$ITEM"

@@ -61,10 +61,12 @@
 # can't be set. App passwords keep working while Keycloak is down.
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"ses-relay":{"@type":"User","name":"ses-relay","domainId":"#mail-domain","description":"SES inbound relay (Lambda) - machine account","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"emailSend":true,"sysOAuthGrantGet":true,"sysOAuthGrantQuery":true,"sysOAuthGrantDestroy":true}}}}}
 # The MCP gateway's machine account for the admin tools (2026-11-26):
-# READ-ONLY (accounts, domains, the outbound queue); no mail, no blobs, no
-# changes. It logs in with an API key (bin/stalwart-mcp-api-key), which
-# carries the same permission set and works only from the server.
-{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (read-only admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true}}}}}
+# Reads accounts, domains and the outbound queue (no mail, no blobs), and
+# may update accounts (sysAccountUpdate) for the confirmed mail admin
+# changes: the gateway limits that to group members, aliases and quotas.
+# Two API keys (bin/stalwart-mcp-api-key [--write]), each usable only from
+# the server: the read key is read-only; the write key adds the update.
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (read-only admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true}}}}}
 # People and shared mailboxes: per instance.
 @include {{SGNL_INSTANCE_DIR}}/stalwart/mailboxes.ndjson
 
