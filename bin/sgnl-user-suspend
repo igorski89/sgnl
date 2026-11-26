@@ -9,17 +9,17 @@
 #   bin/sgnl-user-suspend --status <user>   show the state in each system
 #
 # What "access" means here, and why four places:
-#   1. Keycloak: the account is disabled and all its sessions end,
+#   1. Login server (sgnl-id): the account is disabled and all its sessions end,
 #      including refresh/offline tokens (bin/sgnl-id disable). No new
 #      logins to any SSO app; only an access token already handed to an
 #      app stays valid until it expires (5 min). Nobody else is affected.
 #   2. Stalwart: the "authenticate" permission is disabled on the
 #      account, which also stops mail app passwords (IMAP/SMTP). They're
-#      checked by Stalwart itself, not Keycloak.
+#      checked by Stalwart itself, not the login server.
 #   3. Forgejo: "prohibit login", which also stops git access tokens.
-#      They don't go through Keycloak either.
+#      They don't go through the login server either.
 #   4. OpenCloud: the account is disabled (accountEnabled=false), which
-#      also stops OpenCloud app tokens (WebDAV); those never touch Keycloak.
+#      also stops OpenCloud app tokens (WebDAV); those never touch the login server.
 # Mail apps that are connected right now stay connected until they
 # reconnect. Restarting Stalwart cuts them immediately, for everyone.
 #
@@ -35,7 +35,7 @@ FORGEJO=https://git.$SGNL_APPS_DOMAIN
 OPENCLOUD=https://drive.$SGNL_APPS_DOMAIN
 
 mode=suspend
-# --kill-sessions was needed with Authelia; Keycloak's disable always ends sessions.
+# --kill-sessions is accepted for old habits; disabling always ends all sessions and tokens.
 [[ ${1:-} == --kill-sessions ]] && shift
 case ${1:-} in
   --resume) mode=resume; shift ;;
@@ -53,8 +53,8 @@ failed=0
 ok()   { echo "  ✓ $*"; }
 warn() { echo "  ✗ $*"; failed=1; }
 
-# --- 1. Keycloak ---------------------------------------------------------
-keycloak_step() {
+# --- 1. Login server ------------------------------------------------------
+login_step() {
   echo "Login server (every SSO login)"
   local u; u=$(bin/sgnl-id show "$user" 2>&1) || { warn "$u"; return; }
   local enabled; enabled=$(jq -r .enabled <<<"$u")
@@ -147,7 +147,7 @@ opencloud_step() {
 }
 
 echo "== $mode $user"
-keycloak_step
+login_step
 stalwart_step
 forgejo_step
 opencloud_step
