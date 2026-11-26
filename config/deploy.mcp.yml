@@ -73,6 +73,9 @@ env:
     SGNL_MCP_FREEBUSY_SHARED: "1"
     # Project spaces admin (OpenCloud, as the admin person; 2026-11-26).
     SGNL_MCP_ADMIN_SPACES: "1"
+    # Creating new shared mailboxes (plain groups; needs the Stalwart fork
+    # v1.1.1-sgnl.2 and sysAccountCreate on mcp-gateway; 2026-11-26).
+    SGNL_MCP_MAIL_GROUP_CREATE: "1"
     # Admin tools at /admin/mcp (M4): read-only admin API client; only the
     # group admins (current view) gets in.
     SGNL_MCP_ADMIN_CLIENT_ID: sgnl-mcp-admin
