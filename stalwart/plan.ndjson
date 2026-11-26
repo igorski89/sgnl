@@ -62,8 +62,10 @@
 {"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"ses-relay":{"@type":"User","name":"ses-relay","domainId":"#mail-domain","description":"SES inbound relay (Lambda) - machine account","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"emailSend":true,"sysOAuthGrantGet":true,"sysOAuthGrantQuery":true,"sysOAuthGrantDestroy":true}}}}}
 # The MCP gateway's machine account for the admin tools (2026-11-26):
 # Reads accounts, domains and the outbound queue (no mail, no blobs) and
-# may update accounts (sysAccountUpdate). Mail admin CHANGES don't work
-# yet: Stalwart 1.1.1 lets an account change another account only if it
+# may update accounts (sysAccountUpdate) and create them (sysAccountCreate;
+# the fork lets it create only PLAIN groups = new shared mailboxes; users
+# still need the full check). History: mail admin changes didn't work
+# at first: Stalwart 1.1.1 lets an account change another account only if it
 # holds all of that account's permissions (grant check on every update),
 # i.e. the whole User role, and with the User role this account could SEND
 # mail via JMAP: the MtaStageMail/MtaStageRcpt rules below did NOT stop a
@@ -71,7 +73,7 @@
 # for JMAP submission, or the Stalwart fork + upstream PR.
 # Two API keys, usable only from the server (bin/stalwart-mcp-api-key
 # [--write]): the read key is a fixed read-only list; the write key inherits.
-{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (mail admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true}}}}}
+{"@type":"upsert","object":"Account","matchOn":["name","domainId"],"value":{"mcp-gateway":{"@type":"User","name":"mcp-gateway","domainId":"#mail-domain","description":"MCP gateway - machine account (mail admin)","permissions":{"@type":"Replace","disabledPermissions":{},"enabledPermissions":{"authenticate":true,"sysAccountGet":true,"sysAccountQuery":true,"sysDomainGet":true,"sysDomainQuery":true,"sysQueuedMessageGet":true,"sysQueuedMessageQuery":true,"sysAccountUpdate":true,"sysAccountCreate":true}}}}}
 # Company directory: signed-in people may look up colleagues' names and
 # addresses (JMAP Principal/query; contacts and free/busy in AI apps and mail
 # clients). Stalwart's default is off (2026-11-26: on, by the admin's decision).
