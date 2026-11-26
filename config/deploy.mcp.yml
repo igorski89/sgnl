@@ -17,6 +17,11 @@ servers:
     options:
       network-alias: sgnl-mcp
       memory: 256m
+# The audit trail (SQLite + WAL files), owned by the image's nonroot user
+# (uid 65532; the volume was created and chowned once, docs/DEPLOY.md).
+# In the nightly backup (host/backup/sgnl-backup.sh).
+volumes:
+  - "sgnl_mcp_audit:/data"
 proxy:
   host: mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
   ssl: true
@@ -68,6 +73,14 @@ env:
     # Days the mail server keeps Trash before deleting (Stalwart DataRetention
     # expunge timer); the mail_trash confirmation names it (from v0.1.8).
     SGNL_MCP_TRASH_DAYS: "30"
+    # Audit trail (2026-11-26, instance docs PLAN-mcp-audit): admin calls in
+    # full (changes fail closed), user calls as metadata (fail open);
+    # retention admin 1 year, user 90 days.
+    SGNL_MCP_AUDIT_DB: /data/audit.db
+    SGNL_MCP_AUDIT_ADMIN: full
+    SGNL_MCP_AUDIT_USER: meta
+    SGNL_MCP_AUDIT_RETAIN_ADMIN: 365d
+    SGNL_MCP_AUDIT_RETAIN_USER: 90d
     # Colleagues share free/busy with everyone by default (bin/sgnl-freebusy-sync),
     # so an empty availability means free.
     SGNL_MCP_FREEBUSY_SHARED: "1"
