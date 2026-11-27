@@ -40,6 +40,12 @@ unset BW_SESSION
 export SGNL_BW_SESSION_FILE=/nonexistent/sgnl-dev
 source lib/instance.sh
 [[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
+# Only ever the VM: the dev instance's host must be this VM's SSH alias, which
+# points at Lima's forward on the Mac itself (never a real server).
+[[ $SGNL_HOST == "$NAME" ]] || { echo "sgnl-dev: SGNL_HOST=$SGNL_HOST is not the VM ($NAME)" >&2; exit 1; }
+if [[ -s $STATE/ssh_config ]] && [[ $(ssh -G "$NAME" 2>/dev/null | awk '$1=="hostname"{print $2}') != 127.0.0.1 ]]; then
+  echo "sgnl-dev: SSH alias $NAME doesn't point at 127.0.0.1 (the VM's forward)" >&2; exit 1
+fi
 
 ca_bundle() {
   # Tools on the Mac (Python, curl, Ruby) trust the dev CA plus the usual

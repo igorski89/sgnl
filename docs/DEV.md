@@ -14,6 +14,15 @@ app (`config/deploy.<app>.dev.yml`). Tool: `bin/sgnl-dev`.
   the real vault can't be read or written from them.
 - **Own certificate authority**, limited to `.test` names (X.509 name
   constraints): trusted on the Mac, it can't vouch for any real site.
+- **Never the real server or vault, by refusal:** `bin/sgnl-secret` refuses
+  the vault for the dev instance and a dev secrets file for any other one;
+  `bin/sgnl-dev` refuses any host but the VM's SSH alias (127.0.0.1);
+  `bin/sgnl-deploy` refuses a dev instance and fake secrets.
+- **No internet for the apps:** containers reach only the VM and each
+  other (rejected and logged as `sgnl-dev-noout:`, `journalctl -k`). The VM
+  itself still pulls images. To allow a destination: an address or network
+  per line in `/etc/sgnl-dev/egress-allow` in the VM, then
+  `systemctl restart sgnl-dev-egress`.
 - **No mail leaves:** every app's mail goes to Mailpit
   (`https://mailpit.<apps domain>`), and the VM rejects outgoing SMTP
   (25/465/587/2525, IPv4 + IPv6) anyway.
@@ -22,8 +31,8 @@ app (`config/deploy.<app>.dev.yml`). Tool: `bin/sgnl-dev`.
   the server uses.
 - **No Mac folders** inside the VM.
 
-Not isolated: the VM can reach the internet (image downloads; a few apps
-call out on their own, see "Outside calls"), and its web and mail ports
+Not isolated: the VM itself can reach the internet (image downloads), and
+its web and mail ports
 (80/443/465/993) are open to the local network. Other ports listen on the
 Mac only.
 

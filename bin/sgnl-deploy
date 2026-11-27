@@ -18,6 +18,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source lib/instance.sh
+# Real servers only, with real secrets (docs/DEV.md): dev environments
+# deploy with bin/sgnl-dev kamal; fake secrets (dummy) are for checks.
+[[ ${SGNL_ENV:-} != dev ]] || { echo "sgnl-deploy: refusing a dev instance (use bin/sgnl-dev kamal deploy)" >&2; exit 1; }
+[[ ${SGNL_SECRETS:-bw} != dummy ]] || { echo "sgnl-deploy: refusing fake secrets (SGNL_SECRETS=dummy)" >&2; exit 1; }
 
 STOP_FIRST=" forgejo stalwart listmonk "   # second container can't open the same store / would double-send
 ORDER=(monitoring opencloud vaultwarden id mcp listmonk forgejo stalwart)

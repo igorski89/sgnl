@@ -58,6 +58,8 @@ systemctl enable --now dnsmasq >/dev/null 2>&1
 systemctl restart dnsmasq systemd-resolved
 
 # No mail out (iptables-nft, like Docker's own rules).
+install -d -m 755 /etc/sgnl-dev
+[ -e /etc/sgnl-dev/egress-allow ] || printf '# Destinations the apps may reach (IPv4/IPv6 address or network, one per line).\n# Then: systemctl restart sgnl-dev-egress\n' > /etc/sgnl-dev/egress-allow
 cat > /usr/local/sbin/sgnl-dev-egress <<'FW'
 #!/bin/sh
 # bin/sgnl-dev: reject outgoing SMTP except inside the VM.
@@ -76,11 +78,35 @@ for ipt in iptables ip6tables; do
   $ipt -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j LOG --log-prefix "sgnl-dev-nomail: "
   $ipt -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j REJECT
 done
+# No internet for the apps: containers reach only the VM and each other.
+# (The VM itself still pulls images and keeps time: OUTPUT is not limited.)
+# Blocked attempts are logged ("sgnl-dev-noout: ", journalctl -k). To allow a
+# destination: one IPv4/IPv6 address or network per line in
+# /etc/sgnl-dev/egress-allow, then: systemctl restart sgnl-dev-egress.
+for ipt in iptables ip6tables; do
+  $ipt -N SGNL-NOOUT 2>/dev/null || true
+  $ipt -L DOCKER-USER -n >/dev/null 2>&1 || continue
+  $ipt -C DOCKER-USER -j SGNL-NOOUT 2>/dev/null || $ipt -A DOCKER-USER -j SGNL-NOOUT
+  $ipt -F SGNL-NOOUT
+  $ipt -A SGNL-NOOUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+done
+for net in 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do iptables -A SGNL-NOOUT -d $net -j RETURN; done
+for net in ::1/128 fc00::/7 fe80::/10; do ip6tables -A SGNL-NOOUT -d $net -j RETURN 2>/dev/null || true; done
+if [ -s /etc/sgnl-dev/egress-allow ]; then
+  grep -vE '^[[:space:]]*(#|$)' /etc/sgnl-dev/egress-allow | while read -r net; do
+    case $net in *:*) ip6tables -A SGNL-NOOUT -d "$net" -j RETURN ;; *) iptables -A SGNL-NOOUT -d "$net" -j RETURN ;; esac
+  done
+fi
+for ipt in iptables ip6tables; do
+  $ipt -L SGNL-NOOUT -n >/dev/null 2>&1 || continue
+  $ipt -A SGNL-NOOUT -m limit --limit 10/min -j LOG --log-prefix "sgnl-dev-noout: "
+  $ipt -A SGNL-NOOUT -j REJECT
+done
 FW
 chmod 755 /usr/local/sbin/sgnl-dev-egress
 cat > /etc/systemd/system/sgnl-dev-egress.service <<'UNIT'
 [Unit]
-Description=SGNL dev: no outgoing mail
+Description=SGNL dev: no outgoing mail, no internet for the apps
 After=docker.service
 Requires=docker.service
 [Service]
@@ -93,4 +119,4 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now sgnl-dev-egress >/dev/null 2>&1
 systemctl restart sgnl-dev-egress
-echo "vm-prep: ok ($domain -> $GW, CA trusted, outgoing SMTP blocked)"
+echo "vm-prep: ok ($domain -> $GW, CA trusted, outgoing SMTP blocked, no internet for the apps)"
