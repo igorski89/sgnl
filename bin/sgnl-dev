@@ -10,11 +10,10 @@
 #   bin/sgnl-dev run <cmd>    any repo tool against the dev instance
 #   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
 #   bin/sgnl-dev seed         test people with password + passkey (no human):
-#                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
-#   bin/sgnl-dev check [person]
-#                             sign in to webmail, vault, git, newsletters, monitoring
-#                             and open a new document in the office (browser, end
-#                             to end; default alice, the admin)
+#                             alice (admin), bob, eve (in no group); files in ~/.sgnl-dev/<name>/people
+#   bin/sgnl-dev check        every app in a browser as alice (admin), bob (user) and
+#                             eve (no group: refused everywhere), then a new document
+#                             in the office (end to end)
 #   bin/sgnl-dev smoke tokens   MCP tokens for the two smoke accounts (after seed)
 #   bin/sgnl-dev smoke [flags]  the MCP smoke test against dev (e.g. -read-only)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
@@ -271,10 +270,18 @@ case ${1:-} in
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
     : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
     export PLAYWRIGHT_CORE
-    u=${2:-alice} rc=0
+    rc=0
+    # Who gets what (seed): alice is an admin (admins, developers, forgejo_users), bob an ordinary user (no git
+    # group, no newsletter account), eve in no group: every app must refuse her.
     # One login at a time per person, at least a second apart (passkey sign count from the clock).
-    for app in inbox vault git listmonk monitor; do node host/dev/app-check.mjs $app "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1; sleep 2; done
-    node host/dev/office-check.mjs "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1
+    for row in "alice admin admin admin admin admin admin" "bob user user refused refused user user" \
+               "eve refused refused refused refused refused refused"; do
+      read -r u e1 e2 e3 e4 e5 e6 <<<"$row"; set -- $e1 $e2 $e3 $e4 $e5 $e6
+      for app in inbox vault git listmonk monitor drive; do
+        node host/dev/app-check.mjs $app "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" "$1" || rc=1; shift; sleep 2
+      done
+    done
+    node host/dev/office-check.mjs alice "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1
     exit $rc ;;
   inbound)
     shift; ca_bundle
@@ -300,12 +307,14 @@ case ${1:-} in
     # username|display name|groups (sgnl_users always). Their mailboxes are in
     # instance.dev/stalwart/mailboxes.ndjson.
     for p in "alice|Alice Admin|admins developers forgejo_users mcp_users" "bob|Bob Example|mcp_users" \
-             "sgnl-smoke|SGNL Smoke|mcp_users" "sgnl-smoke2|SGNL Smoke Two|mcp_users"; do
+             "sgnl-smoke|SGNL Smoke|mcp_users" "sgnl-smoke2|SGNL Smoke Two|mcp_users" \
+             "eve|Eve Outsider|-"; do
       IFS='|' read -r u n g <<<"$p"
       [[ -s $ENVDIR/people/$u.passkey.json ]] && { echo "$u: already set up"; continue; }
       bin/sgnl-env bin/sgnl-id show "$u" >/dev/null 2>&1 || bin/sgnl-env bin/sgnl-id add-user "$u" "$n" >/dev/null
+      # "-": an outsider in no group (bin/sgnl-dev check: every app must refuse her).
       # shellcheck disable=SC2086
-      bin/sgnl-env bin/sgnl-id add-to-group "$u" sgnl_users $g >/dev/null
+      [[ $g == - ]] || bin/sgnl-env bin/sgnl-id add-to-group "$u" sgnl_users $g >/dev/null
       bin/sgnl-env bin/sgnl-id setup-email "$u" 2 >/dev/null
       sleep 2
       node host/dev/seed-person.mjs "$u" "$SGNL_DOMAIN" "$SGNL_APPS_DOMAIN" "$ENVDIR/people"
@@ -324,5 +333,5 @@ case ${1:-} in
     # The next VM gets a new host key on the same port.
     ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
     echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
-  *) sed -n 2,26p "$0"; exit 1 ;;
+  *) sed -n 2,27p "$0"; exit 1 ;;
 esac

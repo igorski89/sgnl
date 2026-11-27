@@ -40,8 +40,8 @@ with every image already downloaded.
     # once per Mac: trust the dev CA (sudo security add-trusted-cert -d
     #   -r trustRoot -k /Library/Keychains/System.keychain ~/.sgnl-dev/ca/rootCA.pem)
     bin/sgnl-dev bootstrap   # every app, configured (about 3 min; idempotent)
-    bin/sgnl-dev seed        # alice (admin), bob, two smoke accounts
-    bin/sgnl-dev check       # sign in to each app in a browser, open a document
+    bin/sgnl-dev seed        # alice (admin), bob, eve (no group), two smoke accounts; the git org
+    bin/sgnl-dev check       # each app in a browser as admin, user and outsider; a document in the office
 
 The mail server's arm64 base image (`STALWART_IMAGE` in
 `config/deploy.stalwart.dev.yml`) is built once on the Mac from the
@@ -65,7 +65,7 @@ has, so a laptop build uses thin LTO (build args in the fork's
     bin/sgnl-dev kamal deploy -c config/deploy.<app>.yml   # Kamal, -d dev added
     bin/sgnl-dev run bin/<tool> ...                        # any repo tool against dev
     bin/sgnl-dev inbound <file.eml> <from> <rcpt>          # a mail "from outside"
-    bin/sgnl-dev check [person]                            # browser checks, as above
+    bin/sgnl-dev check                                     # browser checks, as above
     bin/sgnl-dev smoke tokens; bin/sgnl-dev smoke          # the MCP smoke test (runner from ~/Work/sgnl-mcp)
     bin/sgnl-dev stop | start                              # everything comes back
     bin/sgnl-dev destroy                                   # asks; keeps the CA
