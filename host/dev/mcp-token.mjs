@@ -3,13 +3,16 @@
 // <token-dir>/<user>-token.json (600) with the refresh token, which the smoke runner (sgnl-mcp's cmd/sgnl-mcp-smoke)
 // reads. Prints steps only, never a token.
 //
-//   node mcp-token.mjs <user> <apps-domain> <realm> <people-dir> <token-dir>
+//   node mcp-token.mjs <user> <apps-domain> <realm> <people-dir> <token-dir> [resource]
+//
+// resource (RFC 8707): a token for that endpoint only, e.g. the admin one (https://mcp.<apps>/admin/mcp); written
+// as <user>-admin-token.json when it ends in /admin/mcp.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { browserFor } from './login.mjs';
 
-const [USER, APPS, REALM, DIR, TOKENS] = process.argv.slice(2);
+const [USER, APPS, REALM, DIR, TOKENS, RESOURCE] = process.argv.slice(2);
 if (!USER || !APPS?.endsWith('.test') || !REALM || !DIR || !TOKENS) {
   console.error('usage: node mcp-token.mjs <user> <apps-domain ending in .test> <realm> <people-dir> <token-dir>');
   process.exit(64);
@@ -24,6 +27,7 @@ const state = crypto.randomBytes(16).toString('base64url');
 const authorize = BASE + '/api/oidc/authorization?' + new URLSearchParams({
   client_id: CLIENT, response_type: 'code', scope: 'openid profile email groups offline_access', redirect_uri: REDIRECT,
   code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state,
+  ...(RESOURCE ? { resource: RESOURCE } : {}),
 });
 
 const { browser, page, loginStep } = await browserFor(USER, DIR);
@@ -45,13 +49,13 @@ try {
   const r = await fetch(BASE + '/api/oidc/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code: params.get('code'), redirect_uri: REDIRECT, client_id: CLIENT, code_verifier: verifier }),
+    body: new URLSearchParams({ grant_type: 'authorization_code', code: params.get('code'), redirect_uri: REDIRECT, client_id: CLIENT, code_verifier: verifier, ...(RESOURCE ? { resource: RESOURCE } : {}) }),
   });
   const body = await r.json();
   if (!r.ok || !body.refresh_token) throw new Error(`token endpoint ${r.status} ${body.error ?? ''}`);
   fs.mkdirSync(TOKENS, { recursive: true, mode: 0o700 });
-  const file = path.join(TOKENS, `${USER}-token.json`);
-  fs.writeFileSync(file + '.tmp', JSON.stringify({ refresh_token: body.refresh_token, client_id: CLIENT, issuer: BASE }), { mode: 0o600 });
+  const file = path.join(TOKENS, `${USER}${RESOURCE?.endsWith('/admin/mcp') ? '-admin' : ''}-token.json`);
+  fs.writeFileSync(file + '.tmp', JSON.stringify({ refresh_token: body.refresh_token, client_id: CLIENT, issuer: BASE, ...(RESOURCE ? { resource: RESOURCE } : {}) }), { mode: 0o600 });
   fs.renameSync(file + '.tmp', file);
   ok = true;
   log('token written');

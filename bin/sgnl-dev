@@ -370,7 +370,7 @@ case ${1:-} in
     # Git: the org + team Developers need the admin's account, which Forgejo
     # creates at the first sign-in.
     sleep 2
-    node host/dev/app-check.mjs git "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" >/dev/null
+    node host/dev/app-check.mjs git "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" admin >/dev/null
     bin/sgnl-env bin/sgnl-forgejo-setup org | grep -v '^Delete the token'
     # The vault's organisation and the people in it, as on a real instance.
     sleep 2; bin/sgnl-dev vault ;;
