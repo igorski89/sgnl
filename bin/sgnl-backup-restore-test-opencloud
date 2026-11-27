@@ -58,14 +58,17 @@ if diff -q "$T/restored.sums" "$T/live.sums" >/dev/null; then
   echo "    all identical"
 else
   echo "    differences (expected only for files changed since the snapshot):"
-  diff <(awk '{print $2" "$1}' "$T/restored.sums") <(awk '{print $2" "$1}' "$T/live.sums") | grep '^[<>]' | sed 's/^</      only\/older in backup:/; s/^>/      only\/newer on live:  /' | cut -c1-140 | head -20
+  diff <(awk '{print $2" "$1}' "$T/restored.sums") <(awk '{print $2" "$1}' "$T/live.sums") | grep '^[<>]' | sed 's/^</      only\/older in backup:/; s/^>/      only\/newer on live:  /' | cut -c1-140 | head -20 || true   # diff exits 1 on differences (pipefail)
 fi
 [[ -s $T/restored.sums ]] || echo "    (no user files in this snapshot)"
 
 echo "==> booting a throwaway OpenCloud on it (no internet, no ports)"
 # Same env as live (incl. secrets), in a root-only file that is deleted
 # with the scratch dir. Same csp.yaml/proxy.yaml as live.
-( umask 077; docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LIVE" | grep -vE '^(PATH|HOME|HOSTNAME|KAMAL_)' > "$T/env" )
+# Without Tika (search inside files): it isn't on the isolated network, and
+# OpenCloud stops when its search service can't reach the extractor.
+( umask 077; docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LIVE" | grep -vE '^(PATH|HOME|HOSTNAME|KAMAL_|SEARCH_EXTRACTOR_)' > "$T/env"
+  echo SEARCH_EXTRACTOR_TYPE=basic >> "$T/env" )
 docker network create --internal $NAME >/dev/null
 # OC_URL -> itself: downloads go through OpenCloud's own data gateway URL,
 # and the public one isn't reachable from the isolated network.

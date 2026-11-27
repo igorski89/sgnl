@@ -29,7 +29,12 @@ Mac only.
 
 ## From nothing
 
-    brew install lima
+Needs on the Mac: Lima (`brew install lima`), Docker Desktop, Kamal 2,
+`stalwart-cli` 2.x, Node with `playwright-core` and Google Chrome (for
+`seed` and `check`; `PLAYWRIGHT_CORE` points at playwright-core's
+`index.mjs`), and the mail server's arm64 base image (below). Times are
+with every image already downloaded.
+
     bin/sgnl-dev up          # VM, CA, secrets (about 1 min)
     bin/sgnl-dev hosts       # prints the /etc/hosts line: add it once (sudo)
     # once per Mac: trust the dev CA (sudo security add-trusted-cert -d
@@ -38,18 +43,34 @@ Mac only.
     bin/sgnl-dev seed        # alice (admin), bob, two smoke accounts
     bin/sgnl-dev check       # sign in to each app in a browser, open a document
 
-The mail server's arm64 base image is built once on the Mac and kept in
-Kamal's local registry (`docker/stalwart/Dockerfile`, `STALWART_IMAGE` in
-`config/deploy.stalwart.dev.yml`); a laptop build passes
-`--build-arg RELEASE_LTO=thin --build-arg RELEASE_CODEGEN_UNITS=16`.
+The mail server's arm64 base image (`STALWART_IMAGE` in
+`config/deploy.stalwart.dev.yml`) is built once on the Mac from the
+private Stalwart fork and kept in Kamal's local registry, which a
+`destroy` doesn't touch. Fat LTO needs more memory than Docker Desktop
+has, so a laptop build uses thin LTO (build args in the fork's
+`sgnl/Dockerfile`; defaults = the release profile). 30-60 min:
+
+    git -C ../stalwart worktree add /tmp/stalwart-build <tag prod runs>
+    cp ../stalwart/sgnl/Dockerfile /tmp/stalwart-build/sgnl/Dockerfile   # if the tag predates the build args
+    cd /tmp/stalwart-build && docker buildx build \
+      --builder kamal-local-registry-docker-container -f sgnl/Dockerfile --target gnu \
+      --platform linux/arm64 --build-arg TARGET=aarch64-unknown-linux-gnu \
+      --build-arg RELEASE_LTO=thin --build-arg RELEASE_CODEGEN_UNITS=16 \
+      -t localhost:5555/stalwart-sgnl:<tag>-arm64 --push .
+
+(The builder exists once Kamal has built anything with its local registry.)
 
 ## Every day
 
     bin/sgnl-dev kamal deploy -c config/deploy.<app>.yml   # Kamal, -d dev added
     bin/sgnl-dev run bin/<tool> ...                        # any repo tool against dev
     bin/sgnl-dev inbound <file.eml> <from> <rcpt>          # a mail "from outside"
-    bin/sgnl-dev stop | start
+    bin/sgnl-dev check [person]                            # browser checks, as above
+    bin/sgnl-dev stop | start                              # everything comes back
     bin/sgnl-dev destroy                                   # asks; keeps the CA
+
+Backups run nightly to Garage like on the server; every restore drill
+(`bin/sgnl-dev run bin/sgnl-backup-restore-test-all`) passes on dev.
 
 People's passwords and passkeys are in `~/.sgnl-dev/<name>/people/`
 (600). A passkey there is imported with sign count = the current Unix time:
@@ -57,13 +78,16 @@ the login server marks a passkey that repeats a count as cloned, for good.
 
 ## Outside calls
 
-Seen in an egress log of a full rebuild plus tests (no call is needed for
-the apps to work):
+Seen in an egress log (IPv4; the VM has no IPv6 route) of a full rebuild
+plus tests, named from a DNS query log (no call is needed for the apps to
+work):
 
 | App | Calls | When |
 |---|---|---|
 | Mail server | github.com (release assets) | at start |
 | Login server | time.cloudflare.com (clock check, warning only) | at start |
-| Monitoring (Grafana) | grafana.com; Gravatar for avatars | at start; at sign-in |
+| Monitoring (Grafana) | grafana.com; secure.gravatar.com (a hash of each person's email) | at start; when an avatar is shown |
 | Home page (Dashy) | raw.githubusercontent.com | at start |
 | Office (Collabora) | a collabora.co.uk server | now and then |
+
+Also one Google address from Grafana, not identified.

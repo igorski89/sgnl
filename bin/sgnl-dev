@@ -132,7 +132,7 @@ bootstrap() {
   step "base image of the mail server (arm64, in the Mac's local registry)"
   local img; img=$(sed -n 's/^ *STALWART_IMAGE: *//p' config/deploy.stalwart.dev.yml)
   curl -sf "http://${img%%/*}/v2/$(cut -d/ -f2 <<<"${img%:*}")/tags/list" | grep -q "\"${img##*:}\"" ||
-    { echo "missing $img: build it as in instance/docs/PLAN-dev-env.md (Stalwart arm64)" >&2; return 1; }
+    { echo "missing $img: build it as in docs/DEV.md (the mail server's arm64 base image)" >&2; return 1; }
 
   step "kamal-proxy with the dev certificate"
   # Kamal places an accessory's custom certificate only during an app
@@ -189,6 +189,9 @@ bootstrap() {
   [[ -z $(web sgnl-forgejo) ]] || K app stop -c config/deploy.forgejo.yml
   K deploy -c config/deploy.forgejo.yml
   bin/sgnl-env bin/sgnl-forgejo-setup auth
+  # A new Forgejo has no repositories dir until the first repo; its restore
+  # drill (forgejo doctor) needs it.
+  vm "docker exec \$(docker ps -q -f name=^sgnl-forgejo-web-dev-) mkdir -p /var/lib/gitea/git/repositories"
   vm "docker restart \$(docker ps -q -f name=^sgnl-forgejo-web-dev-) >/dev/null"
   [[ -z $(web sgnl-listmonk) ]] || K app stop -c config/deploy.listmonk.yml
   K deploy -c config/deploy.listmonk.yml

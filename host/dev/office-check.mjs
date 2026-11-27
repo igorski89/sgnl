@@ -44,7 +44,8 @@ try {
     return text ? JSON.parse(text) : {};
   };
   const drives = await api('GET', '/graph/v1.0/me/drives?$filter=driveType+eq+personal');
-  const root = drives.value?.[0]?.root?.id ?? drives.value?.[0]?.id;
+  const space = drives.value?.[0]?.id;
+  const root = drives.value?.[0]?.root?.id ?? space;
   const name = `office-check-${Date.now()}.odt`;
   const created = await api('POST', `/app/new?parent_container_id=${encodeURIComponent(root)}&filename=${name}`);
   const fileId = created.file_id;
@@ -65,10 +66,16 @@ try {
     ok = failed === 0;
     log('editor loaded:', ok, errors.length ? `console errors: ${JSON.stringify(errors.slice(0, 3))}` : '');
   } finally {
-    await api('DELETE', `/dav/spaces/${encodeURIComponent(fileId)}`).catch(async () => {
-      await fetch(`${DRIVE}/dav/spaces/${encodeURIComponent(root)}/${name}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
-    });
-    log('deleted', name);
+    // The office locks an open document (WOPI): close the editor, then retry until it unlocks.
+    for (const p of ctx.pages()) if (p !== page) await p.close().catch(() => {});
+    let del;
+    for (let i = 0; i < 20; i++) {
+      del = await fetch(`${DRIVE}/dav/spaces/${encodeURIComponent(space)}/${name}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      if (del.status !== 423) break;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    if (!del.ok) { log('could not delete', name, del.status); ok = false; }
+    else log('deleted', name);
   }
 } catch (e) {
   log('FAILED:', e.message.split('\n')[0]);

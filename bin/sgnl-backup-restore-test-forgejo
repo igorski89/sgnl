@@ -69,6 +69,8 @@ set -e
 cd /var/lib/gitea/git/repositories
 bad=0
 for r in */*.git; do
+  # No repositories (a new instance): the pattern stays literal.
+  [ -d "$r" ] || { echo "    (no repositories)"; continue; }
   commits=$(git -C "$r" rev-list --all 2>/dev/null | wc -l)
   git -C "$r" fsck --no-progress --connectivity-only >/dev/null 2>&1 && fsck=ok || { fsck=FAILED; bad=1; }
   ptrs=0 missing=0
