@@ -28,9 +28,8 @@ reach no app (every app needs sgnl_users). finish-invite sets
 always added). finish-invite, group changes, disable and enable then run
 bin/sgnl-vault-sync, if the instance has vaultwarden/org.yaml.
 
-Which server: production (https://id.<apps>/realms/<realm>, vault item
-id-agent-client-secret) by default; the TEST instance with SGNL_ID_TEST=1
-(https://auth.<apps>/realms/<realm>, authelia-agent-client-secret).
+Server: https://id.<apps>/realms/<realm>, vault item id-agent-client-secret.
+To try something first: a dev environment (docs/DEV.md, bin/sgnl-dev run).
 """
 import base64, json, os, subprocess, sys, urllib.error, urllib.parse, urllib.request
 
@@ -38,12 +37,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
 import instance  # noqa: E402
 I = instance.load()
-TEST = os.environ.get("SGNL_ID_TEST") == "1"
-HOST = ("auth." if TEST else "id.") + I["SGNL_APPS_DOMAIN"]
+HOST = "id." + I["SGNL_APPS_DOMAIN"]
 ISSUER = f"https://{HOST}/realms/{I['SGNL_REALM']}"
 ADMIN = f"{ISSUER}/api/admin"
 DOMAIN = I["SGNL_DOMAIN"]
-SECRET_ITEM = "authelia-agent-client-secret" if TEST else "id-agent-client-secret"
+SECRET_ITEM = "id-agent-client-secret"
 
 
 def secret(name):
@@ -138,7 +136,7 @@ def set_groups(name, add=(), remove=()):
 def vault_sync():
     """Vaultwarden members/groups follow the login server (bin/sgnl-vault-sync),
     if the instance has an organisation config. A failure only warns."""
-    if TEST or not os.path.exists(os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")):
+    if not os.path.exists(os.path.join(instance.instance_dir(), "vaultwarden", "org.yaml")):
         return
     if os.environ.get("SGNL_NO_VAULT_SYNC"):   # temporary test accounts: no password-manager invite
         print("Vaultwarden sync skipped (SGNL_NO_VAULT_SYNC)", file=sys.stderr)
@@ -152,7 +150,7 @@ def vault_sync():
 def freebusy_sync():
     """Colleagues see each other's free/busy (bin/sgnl-freebusy-sync). A person
     without a mailbox yet is picked up on the next run. A failure only warns."""
-    if TEST or os.environ.get("SGNL_NO_VAULT_SYNC"):   # test accounts: skip, like the vault
+    if os.environ.get("SGNL_NO_VAULT_SYNC"):   # dev environments: skip, like the vault
         return
     r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-freebusy-sync")], capture_output=True, text=True)
     out = (r.stdout + r.stderr).strip()

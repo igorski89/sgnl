@@ -34,7 +34,6 @@ connects to `mail.sgnl` directly.
 | A | `drive.sgnl` | `<VPS_IP>` | OpenCloud (files) |
 | A | `office.sgnl` | `<VPS_IP>` | Collabora Online (office editor for OpenCloud) |
 | A | `id.sgnl` | `<VPS_IP>` | Login server (our Authelia fork since 2026-11-24, Keycloak before): login for every app (created 2026-10-18) |
-| A | `auth.sgnl` | `<VPS_IP>` | Not present (removed 2026-11-24). Only while testing a new fork release on the TEST login server (`config/deploy.authelia.yml`): `bin/sgnl-dns add auth`, DNS only. Test hosts `<app>-next.sgnl` come and go the same way (`bin/sgnl-dns add/remove`) |
 | A | `monitor.sgnl` | `<VPS_IP>` | Grafana (monitoring, `config/deploy.monitoring.yml`; created 2026-10-24, DNS only) |
 | A | `listmonk.sgnl` | `<VPS_IP>` | listmonk (campaigns, `config/deploy.listmonk.yml`; created 2026-11-18 via the Cloudflare API, DNS only) |
 | A | `mcp.sgnl` | `<VPS_IP>` | MCP gateway for AI apps (`config/deploy.mcp.yml`; `bin/sgnl-dns add mcp`, DNS only) |

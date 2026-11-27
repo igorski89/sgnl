@@ -4,7 +4,7 @@
 describes; update that table when you add a lasting one.
 
   bin/sgnl-dns list                 # A records under SGNL_APPS_DOMAIN
-  bin/sgnl-dns add <name> [comment] # e.g. add auth  -> auth.<apps> -> SGNL_HOST
+  bin/sgnl-dns add <name> [comment] # e.g. add files -> files.<apps> -> SGNL_HOST
   bin/sgnl-dns remove <name>
 
 The token (vault item cloudflare-api-token, docs/DNS.md) stays in memory;

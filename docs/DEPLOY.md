@@ -133,9 +133,8 @@ bin/sgnl-deploy id                          # config/deploy.id.yml + id/configur
   after that: `bin/sgnl-add-user` (`USERS.md`).
 - In the nightly backup (paused copy of the volume, `BACKUPS.md`); drill:
   `bin/sgnl-backup-restore-test-id`.
-- The test instance on `auth.sgnl` (`config/deploy.authelia.yml`,
-  `authelia/configuration.yml`, `bin/sgnl-authelia-matrix`) stays in the
-  repo for testing new fork releases; it isn't running.
+- New fork releases are tried in a dev environment first (`DEV.md`); the
+  TEST login server on `auth.sgnl` was retired on 2026-11-27.
 
 ## 2. Stalwart
 
