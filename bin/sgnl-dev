@@ -109,7 +109,7 @@ case ${1:-} in
     command -v limactl >/dev/null || { echo "brew install lima" >&2; exit 1; }
     if ! limactl list -q 2>/dev/null | grep -qx "$NAME"; then
       sed "s/@SSH_PORT@/$PORT/" host/dev/lima.yaml > "$STATE/$NAME.yaml"
-      limactl create --name "$NAME" --tty=false "$STATE/$NAME.yaml"
+      limactl create --name "$NAME" --tty=false --mount-none "$STATE/$NAME.yaml"
     fi
     limactl start "$NAME" >/dev/null
     ssh_alias

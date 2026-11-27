@@ -8,8 +8,16 @@ memory: 8GiB
 disk: 30GiB
 ssh:
   localPort: @SSH_PORT@
-# Isolation: no folders of the Mac inside the VM.
+# Isolation: no folders of the Mac inside the VM. The base template adds the
+# home folder and an empty list here doesn't remove it: bin/sgnl-dev creates
+# the VM with --mount-none.
 mounts: []
+# Forwarded ports listen on the Mac's localhost only. (Ports below 1024 still
+# open on all interfaces: macOS lets a normal user bind those only that way.)
+portForwards:
+  - guestIP: 0.0.0.0
+    guestPortRange: [1, 65535]
+    hostIP: 127.0.0.1
 containerd:
   system: false
   user: false
