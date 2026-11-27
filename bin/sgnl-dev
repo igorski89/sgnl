@@ -23,6 +23,10 @@ ENVDIR=$STATE/$NAME
 export SGNL_INSTANCE_DIR=instance.dev
 export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
 export CAROOT=$STATE/ca
+# Never the prod vault: no session key reaches dev tools (bin/sgnl-secret
+# would otherwise load the shared one, lib/bwsession.py).
+unset BW_SESSION
+export SGNL_BW_SESSION_FILE=/nonexistent/sgnl-dev
 source lib/instance.sh
 [[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
 

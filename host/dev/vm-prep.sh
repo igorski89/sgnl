@@ -26,19 +26,16 @@ upstream=$(awk '/^nameserver/{print $2}' /run/systemd/resolve/resolv.conf | grep
 cat > /etc/dnsmasq.d/sgnl-dev.conf <<CONF
 # bin/sgnl-dev: names of the dev instance -> this VM (kamal-proxy on 443).
 listen-address=$GW
-bind-interfaces
+# bind-dynamic: starts before Docker's bridge exists and picks it up later
+# (no ordering on docker.service, which would make a systemd cycle).
+bind-dynamic
 no-resolv
 server=$upstream
 address=/$domain/$GW
 CONF
 # Ubuntu's dnsmasq would also want port 53 on all addresses; ours only $GW.
 sed -i 's/^#\?DNSMASQ_EXCEPT=.*/DNSMASQ_EXCEPT="lo"/' /etc/default/dnsmasq 2>/dev/null || true
-mkdir -p /etc/systemd/system/dnsmasq.service.d
-cat > /etc/systemd/system/dnsmasq.service.d/after-docker.conf <<UNIT
-[Unit]
-After=docker.service
-Requires=docker.service
-UNIT
+rm -f /etc/systemd/system/dnsmasq.service.d/after-docker.conf
 systemctl daemon-reload
 # The VM's own tools resolve the dev names through dnsmasq too.
 mkdir -p /etc/systemd/resolved.conf.d
@@ -65,14 +62,21 @@ systemctl restart dnsmasq systemd-resolved
 cat > /usr/local/sbin/sgnl-dev-egress <<'FW'
 #!/bin/sh
 # bin/sgnl-dev: reject outgoing SMTP except inside the VM.
-for chain in OUTPUT DOCKER-USER; do
-  iptables -N SGNL-NOMAIL 2>/dev/null || true
-  iptables -C $chain -j SGNL-NOMAIL 2>/dev/null || iptables -I $chain 1 -j SGNL-NOMAIL
+# IPv4 and IPv6 alike; DOCKER-USER exists for IPv6 only if Docker uses it.
+for ipt in iptables ip6tables; do
+  $ipt -N SGNL-NOMAIL 2>/dev/null || true
+  for chain in OUTPUT DOCKER-USER; do
+    $ipt -L $chain -n >/dev/null 2>&1 || continue
+    $ipt -C $chain -j SGNL-NOMAIL 2>/dev/null || $ipt -I $chain 1 -j SGNL-NOMAIL
+  done
+  $ipt -F SGNL-NOMAIL
 done
-iptables -F SGNL-NOMAIL
 for net in 127.0.0.0/8 172.16.0.0/12 10.0.0.0/8; do iptables -A SGNL-NOMAIL -d $net -j RETURN; done
-iptables -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j LOG --log-prefix "sgnl-dev-nomail: "
-iptables -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j REJECT
+for net in ::1/128 fc00::/7; do ip6tables -A SGNL-NOMAIL -d $net -j RETURN; done
+for ipt in iptables ip6tables; do
+  $ipt -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j LOG --log-prefix "sgnl-dev-nomail: "
+  $ipt -A SGNL-NOMAIL -p tcp -m multiport --dports 25,465,587,2525 -j REJECT
+done
 FW
 chmod 755 /usr/local/sbin/sgnl-dev-egress
 cat > /etc/systemd/system/sgnl-dev-egress.service <<'UNIT'

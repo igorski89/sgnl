@@ -1,5 +1,7 @@
 # Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
 # deploy.mcp.yml. arm64, the dev certificate, the dev CA trusted.
+# Own image name: dev's arm64 builds never share a tag with prod's images.
+image: sgnl-mcp-dev
 builder:
   arch: arm64
   args:

@@ -1,5 +1,7 @@
 # Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
 # deploy.id.yml. arm64 for the Mac's VM; the dev CA trusted (Mailpit's TLS).
+# Own image name: dev's arm64 builds never share a tag with prod's images.
+image: sgnl-id-dev
 builder:
   arch: arm64
 # The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).

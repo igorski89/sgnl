@@ -3,6 +3,8 @@
 # CA trusted, and Mailpit as the smart host instead of SES: it accepts
 # every mail (STARTTLS on 587, any login) and shows them at
 # https://mailpit.<apps>; nothing leaves the VM (also blocked there).
+# Own image name: dev's arm64 builds never share a tag with prod's images.
+image: sgnl-stalwart-dev
 builder:
   arch: arm64
   args:
