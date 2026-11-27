@@ -22,3 +22,8 @@ volumes:
 env:
   clear:
     SSL_CERT_FILE: /etc/ssl/certs/sgnl-dev-ca.pem
+    # Newsletter tools (listmonk, PLAN-mcp-newsletter.md): dev first. The
+    # gateway exchanges the person's token for audience=listmonk; listmonk
+    # accepts it as that person (api_jwt, config/deploy.listmonk.dev.yml).
+    SGNL_MCP_NEWSLETTER_URL: "http://sgnl-listmonk:9000"
+    SGNL_MCP_NEWSLETTER_AUDIENCE: "listmonk"
