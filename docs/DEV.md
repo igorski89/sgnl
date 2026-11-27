@@ -78,16 +78,19 @@ the login server marks a passkey that repeats a count as cloned, for good.
 
 ## Outside calls
 
-Seen in an egress log (IPv4; the VM has no IPv6 route) of a full rebuild
-plus tests, named from a DNS query log (no call is needed for the apps to
-work):
+At runtime the apps make none (beyond image downloads at deploy). An
+egress log of a full rebuild plus tests (IPv4; the VM has no IPv6 route)
+and a DNS query log found these, all turned off since (2026-11-27; after
+that, zero outside lookups across a full restart and tests):
 
-| App | Calls | When |
+| App | Called | Turned off by |
 |---|---|---|
-| Mail server | github.com (release assets) | at start |
-| Login server | time.cloudflare.com (clock check, warning only) | at start |
-| Monitoring (Grafana) | grafana.com; secure.gravatar.com (a hash of each person's email) | at start; when an avatar is shown |
-| Home page (Dashy) | raw.githubusercontent.com | at start |
-| Office (Collabora) | a collabora.co.uk server | now and then |
+| Mail server | GitHub: its web interface bundle; ~65 MB of ASN/country tables (start + daily) | bundle in the image (`docker/stalwart/Dockerfile`); `Asn` disabled (`stalwart/plan.ndjson`) |
+| Login server | time.cloudflare.com (clock check) | `ntp.disable_startup_check` |
+| Monitoring (Grafana) | Gravatar (a hash of each person's email); grafana.com plugin downloads | `GF_SECURITY_DISABLE_GRAVATAR`, `GF_PLUGINS_PREINSTALL_DISABLED`, `GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED` |
+| Home page (Dashy) | raw.githubusercontent.com (update check) | an empty script mounted over it (`dashy/no-update-check.js`) |
+| Office (Collabora) | collabora.co.uk (update check) | `fetch_update_check=0` |
 
-Also one Google address from Grafana, not identified.
+To repeat the check: put `log-queries` into `/etc/dnsmasq.d/` in the VM,
+restart dnsmasq and the containers, use the apps, then list the queries
+from 172.17/172.18 addresses for names outside `.test`.
