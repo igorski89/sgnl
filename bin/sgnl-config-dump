@@ -28,6 +28,9 @@ end
 
 Dir["config/deploy.*.yml"].sort.each do |path|
   name = File.basename(path, ".yml").sub("deploy.", "")
+  # deploy.<app>.<destination>.yml (e.g. .dev, bin/sgnl-dev) is an overlay
+  # Kamal merges over deploy.<app>.yml with -d, not a config of its own.
+  next if name.include?(".")
   config = Kamal::Configuration.create_from(config_file: Pathname.new(path), version: "dump")
   File.write(File.join(out, "#{name}.config.yml"), YAML.dump(deep_sort(config.raw_config.to_h)))
 
