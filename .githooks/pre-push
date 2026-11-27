@@ -31,8 +31,8 @@ while read -r _ sha _ rsha; do
   git log --format='%an <%ae>%n%cn <%ce>%n%B' "${range[@]}" > "$t/history/commits"
   echo "pre-push: checking ${sha:0:7} ($(git rev-list --count "${range[@]}") commits)" >&2
   for d in tree history; do
-    "$root/bin/sgnl-split-check" "$t/$d" >/dev/null ||
-      { "$root/bin/sgnl-split-check" "$t/$d" >&2 || true; fail "instance-specific content in the pushed $d (above)"; }
+    "$root/bin/sgnl-split-check" --instance "$inst" "$t/$d" >/dev/null ||
+      { "$root/bin/sgnl-split-check" --instance "$inst" "$t/$d" >&2 || true; fail "instance-specific content in the pushed $d (above)"; }
   done
   docker run --rm -v "$t/tree:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
     --no-banner --redact >&2 || fail "gitleaks found something (above)"
