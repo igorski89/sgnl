@@ -4,6 +4,9 @@ Go in this order (for a rebuild, or a new instance); later steps assume
 earlier ones exist. `SECURITY.md` explains why things
 are set up the way they are.
 
+To try a change first: the whole stack in a VM on a Mac (`docs/DEV.md`,
+`bin/sgnl-dev`; `bin/sgnl-dev bootstrap` follows this order).
+
 What has been tested locally (2026-10-07): the Stalwart 0.16.25
 bootstrap + `bin/stalwart-apply` flow, the relay/submission policy, the
 auto-ban and how to undo it, the Lambda handler against Stalwart on 465.
