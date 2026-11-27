@@ -22,7 +22,7 @@ STATE=$HOME/.sgnl-dev
 ENVDIR=$STATE/$NAME
 export SGNL_INSTANCE_DIR=instance.dev
 export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
-export CAROOT=$STATE/ca
+CAROOT=$STATE/ca
 # Never the prod vault: no session key reaches dev tools (bin/sgnl-secret
 # would otherwise load the shared one, lib/bwsession.py).
 unset BW_SESSION
@@ -50,10 +50,25 @@ secrets_file() {
 
 ca_and_cert() {
   install -d -m 700 "$STATE" "$CAROOT" "$ENVDIR"
+  # The dev CA may sign ONLY names under .test (X.509 name constraints):
+  # trusted on the Mac, it still can't vouch for any real site.
+  if [[ ! -s $CAROOT/rootCA.pem ]]; then
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+      -subj "/O=SGNL dev/CN=SGNL dev CA (only .test names)" \
+      -keyout "$CAROOT/rootCA-key.pem" -out "$CAROOT/rootCA.pem" \
+      -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+      -addext "keyUsage=critical,keyCertSign,cRLSign" \
+      -addext "nameConstraints=critical,permitted;DNS:test,permitted;DNS:.test" 2>/dev/null
+    chmod 400 "$CAROOT/rootCA-key.pem"
+  fi
   if [[ ! -s $ENVDIR/tls.crt ]]; then
-    (cd "$ENVDIR" && mkcert -cert-file tls.crt -key-file tls.key "*.$SGNL_APPS_DOMAIN" "$SGNL_APPS_DOMAIN" \
-      "$SGNL_DOMAIN" "*.$SGNL_DOMAIN" sgnl-mailpit >/dev/null 2>&1)
-    chmod 600 "$ENVDIR/tls.key"
+    openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=*.$SGNL_APPS_DOMAIN" \
+      -keyout "$ENVDIR/tls.key" -out "$ENVDIR/tls.csr" 2>/dev/null
+    openssl x509 -req -in "$ENVDIR/tls.csr" -CA "$CAROOT/rootCA.pem" -CAkey "$CAROOT/rootCA-key.pem" \
+      -CAcreateserial -days 825 -out "$ENVDIR/tls.crt" -extfile <(printf '%s\n' \
+        "subjectAltName=DNS:*.$SGNL_APPS_DOMAIN,DNS:$SGNL_APPS_DOMAIN,DNS:$SGNL_DOMAIN,DNS:*.$SGNL_DOMAIN" \
+        "basicConstraints=critical,CA:FALSE" "keyUsage=critical,digitalSignature" "extendedKeyUsage=serverAuth") 2>/dev/null
+    rm -f "$ENVDIR/tls.csr"; chmod 600 "$ENVDIR/tls.key"
   fi
   bin/sgnl-dev-secrets "$ENVDIR/secrets.csv"
   python3 - "$ENVDIR" "$CAROOT" "$SGNL_PREFIX" <<'PY'
@@ -91,7 +106,7 @@ EOF
 
 case ${1:-} in
   up)
-    command -v limactl >/dev/null && command -v mkcert >/dev/null || { echo "brew install lima mkcert" >&2; exit 1; }
+    command -v limactl >/dev/null || { echo "brew install lima" >&2; exit 1; }
     if ! limactl list -q 2>/dev/null | grep -qx "$NAME"; then
       sed "s/@SSH_PORT@/$PORT/" host/dev/lima.yaml > "$STATE/$NAME.yaml"
       limactl create --name "$NAME" --tty=false "$STATE/$NAME.yaml"
