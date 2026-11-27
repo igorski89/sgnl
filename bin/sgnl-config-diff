@@ -31,7 +31,7 @@ dump() { # <dir with a checkout> <out>
   while IFS= read -r name; do
     envs+=("SGNL_SECRET_$(tr 'a-z-' 'A-Z_' <<<"$name")=FAKE-$name")
   done < <(grep -oE 'sgnl-secret [a-z0-9-]+' "$dir/.kamal/secrets" "$dir/.kamal/secrets.example" 2>/dev/null | awk '{print $2}' | sort -u)
-  (cd "$dir" && env "${envs[@]}" SGNL_INSTANCE_DIR="$inst" SGNL_SECRETS=dummy bin/sgnl-config-dump "$out" >/dev/null) ||
+  (cd "$dir" && env -u SGNL_INSTANCE "${envs[@]}" SGNL_INSTANCE_DIR="$inst" SGNL_INSTANCE_CHOSEN="$inst" SGNL_SECRETS=dummy bin/sgnl-config-dump "$out" >/dev/null) ||
     { echo "sgnl-config-diff: rendering failed in $dir" >&2; exit 2; }
 }
 checkout() { # <ref> -> path

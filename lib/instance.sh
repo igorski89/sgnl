@@ -1,6 +1,6 @@
 # Sourced by shell scripts (at the top, before they read their arguments): the instance values as exported SGNL_*
-# variables. The instance must be chosen, never a default (lib/instance.py): a leading --instance <name> (removed
-# from the script's arguments here), or SGNL_INSTANCE / SGNL_INSTANCE_DIR from the environment.
+# variables. The instance must be chosen with a leading --instance <name> (removed from the script's arguments
+# here), never a default or an environment variable; only a calling SGNL tool passes it on (lib/instance.py).
 _sgnl_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 _sgnl_name=
 if [[ ${1:-} == --instance=* ]]; then _sgnl_name=${1#--instance=}; shift

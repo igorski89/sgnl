@@ -35,7 +35,6 @@ NAME=${SGNL_DEV_NAME:-sgnl-dev}
 PORT=${SGNL_DEV_SSH_PORT:-60022}
 STATE=$HOME/.sgnl-dev
 ENVDIR=$STATE/$NAME
-export SGNL_INSTANCE_DIR=instance.dev
 export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
 CAROOT=$STATE/ca
 # Never the prod vault: the bw CLI gets this environment's own data dir and
@@ -43,7 +42,7 @@ CAROOT=$STATE/ca
 # never reaches dev tools (lib/bwsession.py checks the dir, too).
 unset BW_SESSION
 export BITWARDENCLI_APPDATA_DIR=$ENVDIR/bw SGNL_BW_SESSION_FILE=$ENVDIR/bw-session
-source lib/instance.sh
+set -- --instance dev "$@"; source lib/instance.sh   # always the dev instance (lib/instance.py)
 [[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
 # Only ever the VM: the dev instance's host must be this VM's SSH alias, which
 # points at Lima's forward on the Mac itself (never a real server).

@@ -1,11 +1,11 @@
 """Instance values ($SGNL_INSTANCE_DIR/sgnl.env) for Python scripts, the {{SGNL_*}} renderer for static config
 files, and the choice of instance, which is MANDATORY: no tool ever falls back to one.
 
-Choosing (one of; they must agree if several are given):
-  --instance <name>      first argument of any tool (removed before the tool reads its arguments)
-  SGNL_INSTANCE=<name>   environment
-  SGNL_INSTANCE_DIR=<d>  environment (what wrappers, CI and child processes pass on)
+Choosing: --instance <name> as the first argument of any tool (removed before the tool reads its arguments).
 <name> is the instance's SGNL_ORG_SLUG; the instances are the instance/ and instance.*/ dirs of the repo.
+An environment variable never chooses one: a tool started by another SGNL tool (bin/sgnl-env, bin/sgnl-dev,
+Kamal and its hooks) inherits the choice as SGNL_INSTANCE_DIR together with SGNL_INSTANCE_CHOSEN, which only these
+libraries set; SGNL_INSTANCE_DIR alone, or SGNL_INSTANCE, is refused.
 
 A dev instance (SGNL_ENV=dev, docs/DEV.md) also gets its environment's secrets file, CA bundle and its own bw CLI
 data dir, never the real vault's (the same as bin/sgnl-dev sets)."""
@@ -51,23 +51,24 @@ def _choose(name):
     """Sets SGNL_INSTANCE_DIR and SGNL_INSTANCE in os.environ (so child processes inherit the choice), plus a dev
     instance's environment. Returns the exports as (key, value or None for unset)."""
     known = instances()
-    env_name, env_dir = os.environ.get("SGNL_INSTANCE"), os.environ.get("SGNL_INSTANCE_DIR")
     names = ", ".join(known) or "none found"
-    for n in (name, env_name):
-        if n and n not in known:
-            _fail(f"no instance {n!r} (instances: {names})")
-    if name and env_name and name != env_name:
-        _fail(f"--instance {name} disagrees with SGNL_INSTANCE={env_name}")
-    want = name or env_name
-    if want and env_dir and _abs(known[want]) != _abs(env_dir):
-        _fail(f"--instance {want} disagrees with SGNL_INSTANCE_DIR={env_dir} (already chosen by a wrapper?)")
-    if not want and not env_dir:
+    env_dir, chosen = os.environ.get("SGNL_INSTANCE_DIR"), os.environ.get("SGNL_INSTANCE_CHOSEN")
+    # Inherited only from another SGNL tool (the marker matches); anything else in the environment is refused.
+    inherited = env_dir if env_dir and chosen and _abs(chosen) == _abs(env_dir) else None
+    if not inherited and (env_dir or os.environ.get("SGNL_INSTANCE")):
+        _fail("the instance is chosen with --instance <name>, not by an environment variable "
+              f"(unset SGNL_INSTANCE / SGNL_INSTANCE_DIR; instances: {names})")
+    if name and name not in known:
+        _fail(f"no instance {name!r} (instances: {names})")
+    if name and inherited and _abs(known[name]) != _abs(inherited):
+        _fail(f"--instance {name} disagrees with the instance the calling tool chose ({inherited})")
+    if not name and not inherited:
         _fail(f"which instance? Add --instance <name> as the first argument (instances: {names})")
-    d = known[want] if want else env_dir
+    d = known[name] if name else inherited
     if not os.path.isfile(os.path.join(_abs(d), "sgnl.env")):
         _fail(f"no sgnl.env in {d}")
     vals = _read(os.path.join(_abs(d), "sgnl.env"))
-    exports = [("SGNL_INSTANCE_DIR", d), ("SGNL_INSTANCE", vals.get("SGNL_ORG_SLUG", ""))]
+    exports = [("SGNL_INSTANCE_DIR", d), ("SGNL_INSTANCE_CHOSEN", d), ("SGNL_INSTANCE", vals.get("SGNL_ORG_SLUG", ""))]
     if vals.get("SGNL_ENV") == "dev":
         envdir = os.path.join(os.path.expanduser("~/.sgnl-dev"), os.environ.get("SGNL_DEV_NAME", "sgnl-dev"))
         exports += [("BW_SESSION", None), ("BITWARDENCLI_APPDATA_DIR", os.path.join(envdir, "bw")),

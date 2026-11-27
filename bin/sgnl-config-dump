@@ -13,8 +13,21 @@ require "kamal"
 require "yaml"
 require "fileutils"
 
-out = ARGV[0] or abort("usage: bin/sgnl-config-dump <out-dir>")
 root = File.expand_path("..", __dir__)
+# The instance: --instance <name> first (lib/instance.py), or the one a calling SGNL tool chose.
+if ARGV[0] == "--instance"
+  ARGV.shift; name = ARGV.shift or abort("sgnl: --instance needs a name")
+else
+  name = ""
+end
+exports = IO.popen(["python3", File.join(root, "lib", "instance.py"), "--resolve", name], &:read)
+exit 1 unless $?.success?
+exports.each_line do |l|
+  if l.start_with?("unset ") then ENV.delete(l.split[1])
+  else k, v = l.sub(/^export /, "").chomp.split("=", 2); ENV[k] = v.sub(/\A'(.*)'\z/, '\\1')
+  end
+end
+out = ARGV[0] or abort("usage: bin/sgnl-config-dump --instance <name> <out-dir>")
 Dir.chdir(root)
 FileUtils.mkdir_p(out)
 

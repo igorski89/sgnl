@@ -12,7 +12,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # The secret check is about this clone's own instance (instance/), by name of its dir.
-unset SGNL_INSTANCE; export SGNL_INSTANCE_DIR=instance
+inst=$(sed -n 's/^SGNL_ORG_SLUG=//p' "$root/instance/sgnl.env" | tr -d '"')
 [[ $(git rev-parse --show-toplevel) == "$root" ]] || exit 0
 [[ -n ${SGNL_PUSH_UNCHECKED:-} ]] && { echo "pre-push: checks SKIPPED (SGNL_PUSH_UNCHECKED)" >&2; exit 0; }
 # The real vault only: no csv/dummy store, no SGNL_SECRET_* stand-ins.
@@ -36,7 +36,7 @@ while read -r _ sha _ rsha; do
   done
   docker run --rm -v "$t/tree:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml \
     --no-banner --redact >&2 || fail "gitleaks found something (above)"
-  "$root/bin/sgnl-secret" --json | python3 -c '
+  "$root/bin/sgnl-secret" --instance "$inst" --json | python3 -c '
 import json, subprocess, sys
 vals = set()
 for v in json.load(sys.stdin).values():

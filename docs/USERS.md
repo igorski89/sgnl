@@ -1,8 +1,8 @@
 # People: accounts, onboarding, recovery
 
 > **Every `bin/` command needs the instance:** `--instance <name>` as the
-> first argument (e.g. `bin/sgnl-id --instance <name> show anna`), or
-> `SGNL_INSTANCE=<name>` in the environment. No tool falls back to one; the
+> first argument (e.g. `bin/sgnl-id --instance <name> show anna`). No tool
+> falls back to one, and an environment variable doesn't choose one; the
 > names are the `SGNL_ORG_SLUG` of `instance/` and `instance.*/`. Kamal runs
 > through `bin/sgnl-env --instance <name> kamal ...` or `bin/sgnl-deploy`.
 > Dev environments: `bin/sgnl-dev ...` (always `dev`).

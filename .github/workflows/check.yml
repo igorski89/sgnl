@@ -10,7 +10,6 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     env:
-      SGNL_INSTANCE_DIR: instance.example
       SGNL_SECRETS: dummy
     steps:
       - uses: actions/checkout@v4
@@ -24,11 +23,13 @@ jobs:
           done
       - name: No tool runs without a chosen instance
         run: |
-          out=$(env -u SGNL_INSTANCE_DIR bin/sgnl-secret --check 2>&1) && { echo "::error::bin/sgnl-secret ran without an instance"; exit 1; }
+          out=$(bin/sgnl-secret --check 2>&1) && { echo "::error::bin/sgnl-secret ran without an instance"; exit 1; }
           grep -q 'which instance' <<<"$out"
-          out=$(env -u SGNL_INSTANCE_DIR bin/stalwart-apply --render 2>&1) && { echo "::error::bin/stalwart-apply ran without an instance"; exit 1; }
+          out=$(bin/stalwart-apply --render 2>&1) && { echo "::error::bin/stalwart-apply ran without an instance"; exit 1; }
           grep -q 'which instance' <<<"$out"
-          env -u SGNL_INSTANCE_DIR SGNL_SECRETS=dummy bin/sgnl-secret --instance example --check
+          out=$(SGNL_INSTANCE_DIR=instance.example bin/sgnl-secret --check 2>&1) && { echo "::error::an environment variable chose the instance"; exit 1; }
+          grep -q 'not by an environment variable' <<<"$out"
+          bin/sgnl-secret --instance example --check
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
@@ -36,10 +37,10 @@ jobs:
         run: gem install --no-document kamal:2.12.0 dotenv
       - name: Example instance renders
         run: |
-          bin/sgnl-config-dump /tmp/out
+          bin/sgnl-config-dump --instance example /tmp/out
           ls /tmp/out | wc -l
           ! grep -rl '{{SGNL_' /tmp/out
       - name: Vector tests
-        run: bin/sgnl-vector-test
+        run: bin/sgnl-vector-test --instance example
       - name: gitleaks
         run: docker run --rm -v "$PWD:/scan:ro" zricethezav/gitleaks:v8.24.3 dir /scan --config /scan/.gitleaks.toml --no-banner --redact
