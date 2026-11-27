@@ -1,0 +1,24 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.opencloud.yml. arm64, the dev certificate on kamal-proxy, the dev
+# CA trusted (it calls the login server and the office over HTTPS). Its
+# notification mail goes to Mailpit (SGNL_SMTP_HOST; any login works there).
+# Own image name: dev's arm64 builds never share a tag with prod's images.
+image: sgnl-opencloud-dev
+builder:
+  arch: arm64
+# The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+proxy:
+  ssl:
+    certificate_pem: SGNL_TLS_CERT_PEM
+    private_key_pem: SGNL_TLS_KEY_PEM
+volumes:
+  - "sgnl_opencloud_config:/etc/opencloud"
+  - "sgnl_opencloud_data:/var/lib/opencloud"
+  - "/opt/sgnl/opencloud/csp.yaml:/etc/opencloud/csp.yaml:ro"
+  - "/opt/sgnl/opencloud/proxy.yaml:/etc/opencloud/proxy.yaml:ro"
+  - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"

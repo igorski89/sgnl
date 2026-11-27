@@ -1,0 +1,23 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.collabora.yml. The dev certificate on kamal-proxy (bin/sgnl-dev
+# bootstrap places it first: Kamal writes an accessory's certificate only
+# during an app deploy, and this service has no app), the dev CA trusted
+# (it fetches documents from the drive over HTTPS). Smaller than prod's.
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+accessories:
+  web:
+    options:
+      network-alias: sgnl-collabora
+      memory: 2g
+      cpus: 2
+    proxy:
+      ssl:
+        certificate_pem: SGNL_TLS_CERT_PEM
+        private_key_pem: SGNL_TLS_KEY_PEM
+    volumes:
+      - "/opt/sgnl/collabora/proof_key:/etc/coolwsd/proof_key:ro"
+      - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"

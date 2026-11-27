@@ -11,6 +11,8 @@
 #   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
 #   bin/sgnl-dev seed         test people with password + passkey (no human):
 #                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
+#   bin/sgnl-dev office-check [person]
+#                             open a new document in the office as alice (end to end)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
 #                             deliver a mail as if SES received it (real forwarder code)
 #   bin/sgnl-dev stop | start
@@ -132,11 +134,12 @@ bootstrap() {
 
   step "kamal-proxy with the dev certificate"
   # Kamal places an accessory's custom certificate only during an app
-  # deploy: Mailpit's goes in first. dev-tls is the root placeholder's.
+  # deploy: Mailpit's and Collabora's go in first. dev-tls is the root placeholder's.
   vm "set -e; docker network inspect kamal >/dev/null 2>&1 || docker network create kamal >/dev/null
-      install -d $pc/dev-tls $pc/sgnl-stalwart-dev/tls
-      cp $ca/tls.crt $ca/tls.key $pc/dev-tls/
-      cat $ca/tls.crt $ca/ca.pem > $pc/sgnl-stalwart-dev/tls/cert.pem; cp $ca/tls.key $pc/sgnl-stalwart-dev/tls/key.pem"
+      install -d $pc/dev-tls; cp $ca/tls.crt $ca/tls.key $pc/dev-tls/
+      for svc in sgnl-stalwart-dev sgnl-collabora-dev; do
+        install -d $pc/\$svc/tls; cat $ca/tls.crt $ca/ca.pem > $pc/\$svc/tls/cert.pem; cp $ca/tls.key $pc/\$svc/tls/key.pem
+      done"
   vm 'docker ps -q -f name=^kamal-proxy$' | grep -q . || K proxy boot -c config/deploy.id.yml
 
   step "Mailpit (every mail ends here; the login server checks it at start)"
@@ -168,6 +171,12 @@ bootstrap() {
   done
   # The forwarder's login (host/dev/inbound.mjs); prod's goes to AWS.
   has_secret ses-relay-app-password || bin/sgnl-env bin/stalwart-relay-app-password
+
+  step "drive (OpenCloud + Tika) and office (Collabora)"
+  bin/sgnl-env bin/sgnl-collabora-proof-key
+  vm 'docker ps -aq -f name=^sgnl-collabora-web$' | grep -q . || K accessory boot web -c config/deploy.collabora.yml
+  vm 'docker ps -aq -f name=^sgnl-tika$' | grep -q . || K accessory boot tika -c config/deploy.opencloud.yml
+  K deploy -c config/deploy.opencloud.yml
 
   step "MCP gateway"
   K deploy -c config/deploy.mcp.yml
@@ -206,6 +215,11 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
+  office-check)
+    export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
+    : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
+    export PLAYWRIGHT_CORE
+    node host/dev/office-check.mjs "${2:-alice}" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" ;;
   inbound)
     shift; ca_bundle
     pw=$(mktemp); trap 'rm -f "$pw"' EXIT
@@ -249,5 +263,5 @@ case ${1:-} in
     # The next VM gets a new host key on the same port.
     ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
     echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
-  *) sed -n 2,21p "$0"; exit 1 ;;
+  *) sed -n 2,24p "$0"; exit 1 ;;
 esac
