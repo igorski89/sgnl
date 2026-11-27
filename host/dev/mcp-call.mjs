@@ -2,7 +2,7 @@
 // -> access token, initialize, tools/call). Prints the tool's text answer only; the refresh token is rotated and
 // written back (600).
 //
-//   node mcp-call.mjs <token-file> <mcp-url> <tool> '<json arguments>'
+//   [MCP_ISSUER=https://id.<apps>/realms/<realm>] node mcp-call.mjs <token-file> <mcp-url> <tool> '<json arguments>'
 import fs from 'node:fs';
 
 const [FILE, URL_, TOOL, ARGS = '{}'] = process.argv.slice(2);
@@ -11,6 +11,9 @@ if (!FILE || !URL_?.includes('.test/') || !TOOL) {
   process.exit(64);
 }
 const t = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+// Token files of the smoke runner don't name the issuer or client: MCP_ISSUER / the gateway's public client.
+t.issuer ??= process.env.MCP_ISSUER; t.client_id ??= 'sgnl-mcp-claude-code';
+if (!t.issuer) { console.error('no issuer in the token file: set MCP_ISSUER'); process.exit(64); }
 const r = await fetch(t.issuer + '/api/oidc/token', {
   method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: t.client_id, ...(t.resource ? { resource: t.resource } : {}) }),
