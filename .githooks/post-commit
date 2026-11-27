@@ -11,6 +11,8 @@
 [[ -n ${SGNL_NO_BOOTSTRAP_PUSH:-} ]] && exit 0
 # The SGNL folder: where this hook lives, whichever repo committed.
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# The bundle is this clone's own instance (instance/).
+unset SGNL_INSTANCE; export SGNL_INSTANCE_DIR=instance
 log="$root/.git/sgnl-bootstrap-push.log"
 (
   if out=$(cd "$root" && bin/sgnl-env bin/sgnl-bootstrap-push 2>&1); then

@@ -17,6 +17,7 @@
 #   bin/sgnl-dev vault        the dev vault's organisation (alice owns it), the bw CLI
 #                             logged in to it, bin/sgnl-vault-sync, invitations accepted
 #                             (idempotent; seed runs it)
+#   bin/sgnl-dev unlock       the dev vault's CLI unlocked again (after 12 h; no prompt)
 #   bin/sgnl-dev smoke tokens   MCP tokens for the two smoke accounts (after seed)
 #   bin/sgnl-dev smoke [flags]  the MCP smoke test against dev (e.g. -read-only)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
@@ -127,6 +128,22 @@ EOF
 }
 
 vm() { ssh "$NAME" "$@"; }
+# The bw CLI on the dev vault, logged in as its owner and unlocked with the
+# owner's stored master password (bin/sgnl-dev vault created both).
+dev_unlock() {
+  local vj=$ENVDIR/people/$SGNL_ADMIN_USER.vault.json
+  [[ -s $vj ]] || { echo "no dev vault owner yet: bin/sgnl-dev vault" >&2; return 1; }
+  field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]][sys.argv[3]] if sys.argv[3] else d[sys.argv[2]], end="")' "$vj" "$1" "${2:-}"; }
+  export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
+  install -d -m 700 "$BITWARDENCLI_APPDATA_DIR"
+  if [[ $(bw status | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])') == unauthenticated ]]; then
+    bw config server "https://vault.$SGNL_APPS_DOMAIN" >/dev/null
+    BW_CLIENTID=$(field user client_id) BW_CLIENTSECRET=$(field user client_secret) bw login --apikey >/dev/null
+  fi
+  (umask 077; BW_MASTER=$(field master) bw unlock --passwordenv BW_MASTER --raw > "$SGNL_BW_SESSION_FILE.tmp")
+  mv "$SGNL_BW_SESSION_FILE.tmp" "$SGNL_BW_SESSION_FILE"
+  echo "dev vault unlocked for the dev tools (bw data in $BITWARDENCLI_APPDATA_DIR, 12 h)"
+}
 web() { vm "docker ps -q -f name=^$1-web-dev-"; }   # a Kamal app's running container
 stw() {   # stalwart-cli as the dev mail server's recovery admin
   local r; r=$(bin/sgnl-secret stalwart-recovery-admin)
@@ -253,6 +270,7 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
+  unlock) dev_unlock ;;
   vault)
     ca_bundle
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
@@ -263,16 +281,7 @@ case ${1:-} in
     field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]][sys.argv[3]] if sys.argv[3] else d[sys.argv[2]], end="")' "$vj" "$1" "${2:-}"; }
     field org client_id | bin/sgnl-secret --set "$SGNL_PREFIX-vaultwarden-org-client-id"
     field org client_secret | bin/sgnl-secret --set "$SGNL_PREFIX-vaultwarden-org-client-secret"
-    install -d -m 700 "$BITWARDENCLI_APPDATA_DIR"
-    if [[ $(bw status | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])') == unauthenticated ]]; then
-      bw config server "https://vault.$SGNL_APPS_DOMAIN" >/dev/null
-      BW_CLIENTID=$(field user client_id) BW_CLIENTSECRET=$(field user client_secret) bw login --apikey >/dev/null
-    fi
-    # The owner's master password is known here (dev): unlock without a human.
-    umask 077
-    BW_MASTER=$(field master) bw unlock --passwordenv BW_MASTER --raw > "$SGNL_BW_SESSION_FILE.tmp"
-    mv "$SGNL_BW_SESSION_FILE.tmp" "$SGNL_BW_SESSION_FILE"
-    echo "bw CLI: logged in to https://vault.$SGNL_APPS_DOMAIN (data in $BITWARDENCLI_APPDATA_DIR)"
+    dev_unlock
     out=$(bin/sgnl-env bin/sgnl-vault-sync); echo "$out"
     # Seeded people with a pending invitation accept it, then the sync confirms them.
     invited=$(sed -n 's/^invited, waiting for them to accept the email: //p' <<<"$out" | tr ',' '\n' | sed 's/@.*//; s/ //g')
@@ -365,7 +374,7 @@ case ${1:-} in
     node host/dev/app-check.mjs git "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" >/dev/null
     bin/sgnl-env bin/sgnl-forgejo-setup org | grep -v '^Delete the token'
     # The vault's organisation and the people in it, as on a real instance.
-    sleep 2; "$0" vault ;;
+    sleep 2; bin/sgnl-dev vault ;;
   stop) limactl stop "$NAME" ;;
   start) limactl start "$NAME" ;;
   destroy)
@@ -375,5 +384,5 @@ case ${1:-} in
     # The next VM gets a new host key on the same port.
     ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
     echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
-  *) sed -n 2,29p "$0"; exit 1 ;;
+  *) sed -n 2,31p "$0"; exit 1 ;;
 esac

@@ -14,6 +14,7 @@ set -euo pipefail
 # Needs stalwart-cli >= 2.0 for Stalwart 1.x (>= 1.0.13 for 0.16) on PATH (brew install
 # stalwartlabs/tap/stalwart-cli, or the release tarball).
 cd "$(dirname "$0")/.."
+source lib/instance.sh   # first: takes a leading --instance <name>; {{SGNL_*}} values (exported)
 
 plan=stalwart/plan.ndjson
 args=() render=
@@ -27,7 +28,6 @@ done
 
 [[ -n $render ]] || command -v stalwart-cli >/dev/null || { echo "stalwart-cli not on PATH" >&2; exit 1; }
 
-source lib/instance.sh   # {{SGNL_*}} values (exported)
 set -a
 # shellcheck disable=SC1091
 source "${SECRETS_FILE:-.kamal/secrets}"

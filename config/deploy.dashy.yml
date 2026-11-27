@@ -1,4 +1,4 @@
-<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+<% require "dotenv"; Dotenv.load(File.join(ENV.fetch("SGNL_INSTANCE_DIR") { abort "sgnl: which instance? Run Kamal through bin/sgnl-env --instance <name> (or bin/sgnl-deploy, bin/sgnl-dev kamal)" }, "sgnl.env")) %>
 # Landing page after login (home.sgnl): Dashy, tiles filtered by groups.
 # Login via Keycloak (public PKCE client "dashy", id/configuration.yml).
 # No state worth backing up: everything is in git.

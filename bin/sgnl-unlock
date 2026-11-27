@@ -4,12 +4,19 @@
 # key to ~/.cache/sgnl/bw-session (600), good for 12 h (lib/bwsession.py). Lock again with bin/sgnl-lock,
 # e.g. at the end of the day.
 #
-#   bin/sgnl-unlock
+#   bin/sgnl-unlock --instance <name>
+#
+# The instance's own vault: the real one for a real instance; for a dev
+# instance its dev vault (own bw data dir, unlocked with the dev owner's
+# stored master password: bin/sgnl-dev unlock, no prompt).
 #
 # Each unlock makes earlier session keys invalid, also ones other
 # sessions hold in their own BW_SESSION; tools using the shared file just
 # pick up the new key.
 set -euo pipefail
+cd "$(dirname "$0")/.."
+source lib/instance.sh   # mandatory --instance <name> (or SGNL_INSTANCE)
+if [[ ${SGNL_ENV:-} == dev ]]; then exec bin/sgnl-dev unlock; fi
 F=${SGNL_BW_SESSION_FILE:-$HOME/.cache/sgnl/bw-session}
 status=$(bw status | python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')
 if [[ $status == unauthenticated ]]; then

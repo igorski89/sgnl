@@ -1,4 +1,4 @@
-<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+<% require "dotenv"; Dotenv.load(File.join(ENV.fetch("SGNL_INSTANCE_DIR") { abort "sgnl: which instance? Run Kamal through bin/sgnl-env --instance <name> (or bin/sgnl-deploy, bin/sgnl-dev kamal)" }, "sgnl.env")) %>
 # Monitoring for the whole host (SGNL and cotenant): instance/docs/PLAN-monitoring.md.
 #
 #   kamal deploy -c config/deploy.monitoring.yml                 # Grafana

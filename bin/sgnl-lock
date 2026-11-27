@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Locks Vaultwarden and removes the shared session file (bin/sgnl-unlock).
 #
-#   bin/sgnl-lock
+#   bin/sgnl-lock --instance <name>     (a dev instance: its dev vault's CLI)
 set -uo pipefail
+cd "$(dirname "$0")/.."
+source lib/instance.sh   # mandatory --instance <name> (or SGNL_INSTANCE)
 F=${SGNL_BW_SESSION_FILE:-$HOME/.cache/sgnl/bw-session}
 bw lock >/dev/null && echo "Vaultwarden locked."
 [[ -f $F ]] && rm -P "$F" && echo "shared session file removed."

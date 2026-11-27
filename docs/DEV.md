@@ -72,6 +72,12 @@ has, so a laptop build uses thin LTO (build args in the fork's
 
 ## Every day
 
+Inside `bin/sgnl-dev` the instance is always `dev`. Any other tool takes
+it as usual (`bin/sgnl-id --instance dev show alice`, `bin/sgnl-unlock
+--instance dev`): for `dev` it gets the dev secrets file, CA bundle and the
+dev vault's own bw data, never the real ones (`lib/instance.py`).
+
+
     bin/sgnl-dev kamal deploy -c config/deploy.<app>.yml   # Kamal, -d dev added
     bin/sgnl-dev run bin/<tool> ...                        # any repo tool against dev
     bin/sgnl-dev inbound <file.eml> <from> <rcpt>          # a mail "from outside"

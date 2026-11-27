@@ -1,4 +1,4 @@
-<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+<% require "dotenv"; Dotenv.load(File.join(ENV.fetch("SGNL_INSTANCE_DIR") { abort "sgnl: which instance? Run Kamal through bin/sgnl-env --instance <name> (or bin/sgnl-deploy, bin/sgnl-dev kamal)" }, "sgnl.env")) %>
 # JMAP webmail client for Stalwart. Login goes through Keycloak (OIDC,
 # OAUTH_ONLY hides the password form; Authelia until 2026-10-19). Bulwark
 # exchanges the code server-side and calls Stalwart's JMAP with the

@@ -1,4 +1,4 @@
-<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+<% require "dotenv"; Dotenv.load(File.join(ENV.fetch("SGNL_INSTANCE_DIR") { abort "sgnl: which instance? Run Kamal through bin/sgnl-env --instance <name> (or bin/sgnl-deploy, bin/sgnl-dev kamal)" }, "sgnl.env")) %>
 # MCP gateway (sgnl-mcp): one MCP endpoint over SGNL's apps for AI clients
 # (Claude, Codex) at https://mcp.<apps>/mcp. People log in with their SGNL
 # account (login server clients sgnl-mcp-claude-code etc.); the gateway trades

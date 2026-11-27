@@ -1,5 +1,12 @@
 # Deploy order — Phase 1
 
+> **Every `bin/` command needs the instance:** `--instance <name>` as the
+> first argument (e.g. `bin/sgnl-id --instance <name> show anna`), or
+> `SGNL_INSTANCE=<name>` in the environment. No tool falls back to one; the
+> names are the `SGNL_ORG_SLUG` of `instance/` and `instance.*/`. Kamal runs
+> through `bin/sgnl-env --instance <name> kamal ...` or `bin/sgnl-deploy`.
+> Dev environments: `bin/sgnl-dev ...` (always `dev`).
+
 Go in this order (for a rebuild, or a new instance); later steps assume
 earlier ones exist. `SECURITY.md` explains why things
 are set up the way they are.

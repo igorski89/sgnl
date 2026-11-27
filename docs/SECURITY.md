@@ -1,5 +1,12 @@
 # Security model — Phase 1
 
+> **Every `bin/` command needs the instance:** `--instance <name>` as the
+> first argument (e.g. `bin/sgnl-id --instance <name> show anna`), or
+> `SGNL_INSTANCE=<name>` in the environment. No tool falls back to one; the
+> names are the `SGNL_ORG_SLUG` of `instance/` and `instance.*/`. Kamal runs
+> through `bin/sgnl-env --instance <name> kamal ...` or `bin/sgnl-deploy`.
+> Dev environments: `bin/sgnl-dev ...` (always `dev`).
+
 What runs, what each piece exposes, what protects it, and what's still
 open, against the pinned upstream versions. Identity: our Authelia fork,
 the "login server" (since 2026-11-24; Keycloak from 2026-10-19,

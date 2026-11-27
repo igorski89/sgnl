@@ -1,4 +1,4 @@
-<% require "dotenv"; Dotenv.load(File.join(ENV["SGNL_INSTANCE_DIR"] ||= "instance", "sgnl.env")) %>
+<% require "dotenv"; Dotenv.load(File.join(ENV.fetch("SGNL_INSTANCE_DIR") { abort "sgnl: which instance? Run Kamal through bin/sgnl-env --instance <name> (or bin/sgnl-deploy, bin/sgnl-dev kamal)" }, "sgnl.env")) %>
 # Collabora Online (CODE): the office editor OpenCloud embeds for live
 # co-editing (office.sgnl). The browser loads the editor from here; the
 # editor fetches/saves files through OpenCloud's WOPI endpoint on drive.sgnl,

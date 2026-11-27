@@ -11,6 +11,8 @@
 # SGNL_PUSH_UNCHECKED=1 git push
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# The secret check is about this clone's own instance (instance/), by name of its dir.
+unset SGNL_INSTANCE; export SGNL_INSTANCE_DIR=instance
 [[ $(git rev-parse --show-toplevel) == "$root" ]] || exit 0
 [[ -n ${SGNL_PUSH_UNCHECKED:-} ]] && { echo "pre-push: checks SKIPPED (SGNL_PUSH_UNCHECKED)" >&2; exit 0; }
 # The real vault only: no csv/dummy store, no SGNL_SECRET_* stand-ins.
