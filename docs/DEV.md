@@ -49,7 +49,8 @@ with every image already downloaded.
     # once per Mac: trust the dev CA (sudo security add-trusted-cert -d
     #   -r trustRoot -k /Library/Keychains/System.keychain ~/.sgnl-dev/ca/rootCA.pem)
     bin/sgnl-dev bootstrap   # every app, configured (about 3 min; idempotent)
-    bin/sgnl-dev seed        # alice (admin), bob, eve (no group), two smoke accounts; the git org
+    bin/sgnl-dev seed        # alice (admin), bob, eve (no group), two smoke accounts; the git org;
+                             # the vault's organisation, bob invited, accepted, confirmed
     bin/sgnl-dev check       # each app in a browser as admin, user and outsider; a document in the office
 
 The mail server's arm64 base image (`STALWART_IMAGE` in
@@ -83,7 +84,11 @@ Backups run nightly to Garage like on the server; every restore drill
 (`bin/sgnl-dev run bin/sgnl-backup-restore-test-all`) passes on dev.
 
 People's passwords and passkeys are in `~/.sgnl-dev/<name>/people/`
-(600). A passkey there is imported with sign count = the current Unix time:
+(600), vault master passwords and alice's vault API keys in
+`<person>.vault.json`. The bw CLI for the dev vault keeps its own data in
+`~/.sgnl-dev/<name>/bw` (never the real vault's; `lib/bwsession.py`
+refuses a mix). Its session lasts 12 h; `bin/sgnl-dev vault` unlocks it
+again. A passkey there is imported with sign count = the current Unix time:
 the login server marks a passkey that repeats a count as cloned, for good.
 
 ## Outside calls

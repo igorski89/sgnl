@@ -16,7 +16,7 @@ groups:
 # Login-server accounts that are never members, though in a group above
 # (e.g. automated test accounts: they need sgnl_users for the apps but must
 # not see company passwords).
-# exclude: [sgnl-smoke, sgnl-smoke2]
+exclude: [sgnl-smoke, sgnl-smoke2]
 
 # Collection: {group: view | view-hidden | edit | manage}
 #   view         read items and passwords

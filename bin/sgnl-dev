@@ -14,6 +14,9 @@
 #   bin/sgnl-dev check        every app in a browser as alice (admin), bob (user) and
 #                             eve (no group: refused everywhere), then a new document
 #                             in the office (end to end)
+#   bin/sgnl-dev vault        the dev vault's organisation (alice owns it), the bw CLI
+#                             logged in to it, bin/sgnl-vault-sync, invitations accepted
+#                             (idempotent; seed runs it)
 #   bin/sgnl-dev smoke tokens   MCP tokens for the two smoke accounts (after seed)
 #   bin/sgnl-dev smoke [flags]  the MCP smoke test against dev (e.g. -read-only)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
@@ -22,7 +25,7 @@
 #   bin/sgnl-dev destroy      delete the VM and its secrets (asks); keeps the
 #                             dev CA, so the Mac's trust in it stays valid
 #
-# From nothing: up, hosts (once per Mac), bootstrap, seed.
+# From nothing: up, hosts (once per Mac), bootstrap, seed (includes vault).
 #
 # Env: SGNL_DEV_NAME (default sgnl-dev), SGNL_DEV_SSH_PORT (default 60022).
 set -euo pipefail
@@ -34,10 +37,11 @@ ENVDIR=$STATE/$NAME
 export SGNL_INSTANCE_DIR=instance.dev
 export SGNL_SECRETS=csv:$ENVDIR/secrets.csv
 CAROOT=$STATE/ca
-# Never the prod vault: no session key reaches dev tools (bin/sgnl-secret
-# would otherwise load the shared one, lib/bwsession.py).
+# Never the prod vault: the bw CLI gets this environment's own data dir and
+# session file (the dev vault, bin/sgnl-dev vault); the shared prod session
+# never reaches dev tools (lib/bwsession.py checks the dir, too).
 unset BW_SESSION
-export SGNL_BW_SESSION_FILE=/nonexistent/sgnl-dev
+export BITWARDENCLI_APPDATA_DIR=$ENVDIR/bw SGNL_BW_SESSION_FILE=$ENVDIR/bw-session
 source lib/instance.sh
 [[ ${SGNL_ENV:-} == dev ]] || { echo "sgnl-dev: instance.dev is not SGNL_ENV=dev" >&2; exit 1; }
 # Only ever the VM: the dev instance's host must be this VM's SSH alias, which
@@ -249,6 +253,36 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
+  vault)
+    ca_bundle
+    export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
+    : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
+    export PLAYWRIGHT_CORE
+    node host/dev/vault-owner.mjs "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$SGNL_ORG_NAME" "$ENVDIR/people"
+    vj=$ENVDIR/people/$SGNL_ADMIN_USER.vault.json
+    field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]][sys.argv[3]] if sys.argv[3] else d[sys.argv[2]], end="")' "$vj" "$1" "${2:-}"; }
+    field org client_id | bin/sgnl-secret --set "$SGNL_PREFIX-vaultwarden-org-client-id"
+    field org client_secret | bin/sgnl-secret --set "$SGNL_PREFIX-vaultwarden-org-client-secret"
+    install -d -m 700 "$BITWARDENCLI_APPDATA_DIR"
+    if [[ $(bw status | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])') == unauthenticated ]]; then
+      bw config server "https://vault.$SGNL_APPS_DOMAIN" >/dev/null
+      BW_CLIENTID=$(field user client_id) BW_CLIENTSECRET=$(field user client_secret) bw login --apikey >/dev/null
+    fi
+    # The owner's master password is known here (dev): unlock without a human.
+    umask 077
+    BW_MASTER=$(field master) bw unlock --passwordenv BW_MASTER --raw > "$SGNL_BW_SESSION_FILE.tmp"
+    mv "$SGNL_BW_SESSION_FILE.tmp" "$SGNL_BW_SESSION_FILE"
+    echo "bw CLI: logged in to https://vault.$SGNL_APPS_DOMAIN (data in $BITWARDENCLI_APPDATA_DIR)"
+    out=$(bin/sgnl-env bin/sgnl-vault-sync); echo "$out"
+    # Seeded people with a pending invitation accept it, then the sync confirms them.
+    invited=$(sed -n 's/^invited, waiting for them to accept the email: //p' <<<"$out" | tr ',' '\n' | sed 's/@.*//; s/ //g')
+    if [[ -n $invited ]]; then
+      for u in $invited; do
+        [[ -s $ENVDIR/people/$u.passkey.json ]] && node host/dev/vault-join.mjs "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people"
+        sleep 2
+      done
+      bin/sgnl-env bin/sgnl-vault-sync | grep -E '^(confirmed|invited)' || true
+    fi ;;
   smoke)
     ca_bundle
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
@@ -329,7 +363,9 @@ case ${1:-} in
     # creates at the first sign-in.
     sleep 2
     node host/dev/app-check.mjs git "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" >/dev/null
-    bin/sgnl-env bin/sgnl-forgejo-setup org | grep -v '^Delete the token' ;;
+    bin/sgnl-env bin/sgnl-forgejo-setup org | grep -v '^Delete the token'
+    # The vault's organisation and the people in it, as on a real instance.
+    sleep 2; "$0" vault ;;
   stop) limactl stop "$NAME" ;;
   start) limactl start "$NAME" ;;
   destroy)
@@ -339,5 +375,5 @@ case ${1:-} in
     # The next VM gets a new host key on the same port.
     ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
     echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
-  *) sed -n 2,27p "$0"; exit 1 ;;
+  *) sed -n 2,29p "$0"; exit 1 ;;
 esac
