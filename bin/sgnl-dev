@@ -73,7 +73,8 @@ ca_and_cert() {
     openssl x509 -req -in "$ENVDIR/tls.csr" -CA "$CAROOT/rootCA.pem" -CAkey "$CAROOT/rootCA-key.pem" \
       -CAcreateserial -days 825 -out "$ENVDIR/tls.crt" -extfile <(printf '%s\n' \
         "subjectAltName=DNS:*.$SGNL_APPS_DOMAIN,DNS:$SGNL_APPS_DOMAIN,DNS:$SGNL_DOMAIN,DNS:*.$SGNL_DOMAIN" \
-        "basicConstraints=critical,CA:FALSE" "keyUsage=critical,digitalSignature" "extendedKeyUsage=serverAuth") 2>/dev/null
+        "basicConstraints=critical,CA:FALSE" "keyUsage=critical,digitalSignature" "extendedKeyUsage=serverAuth" \
+        "subjectKeyIdentifier=hash" "authorityKeyIdentifier=keyid:always") 2>/dev/null
     rm -f "$ENVDIR/tls.csr"; chmod 600 "$ENVDIR/tls.key"
   fi
   bin/sgnl-dev-secrets "$ENVDIR/secrets.csv"
@@ -138,6 +139,9 @@ bootstrap() {
       cat $ca/tls.crt $ca/ca.pem > $pc/sgnl-stalwart-dev/tls/cert.pem; cp $ca/tls.key $pc/sgnl-stalwart-dev/tls/key.pem"
   vm 'docker ps -q -f name=^kamal-proxy$' | grep -q . || K proxy boot -c config/deploy.id.yml
 
+  step "Mailpit (every mail ends here; the login server checks it at start)"
+  vm 'docker ps -aq -f name=^sgnl-mailpit$' | grep -q . || K accessory boot mailpit -c config/deploy.stalwart.yml
+
   step "login server"
   K deploy -c config/deploy.id.yml
   bin/sgnl-env bin/sgnl-root-placeholder sgnl-id-root id
@@ -146,8 +150,7 @@ bootstrap() {
     vm "docker exec $c authelia groups create $g --config /config/configuration.yml >/dev/null 2>&1" || true
   done
 
-  step "mail server + Mailpit"
-  vm 'docker ps -aq -f name=^sgnl-mailpit$' | grep -q . || K accessory boot mailpit -c config/deploy.stalwart.yml
+  step "mail server"
   # It publishes 465/993 itself: no overlap, stop the old one first (as on prod).
   [[ -z $(web sgnl-stalwart) ]] || K app stop -c config/deploy.stalwart.yml
   K deploy -c config/deploy.stalwart.yml
@@ -201,7 +204,7 @@ case ${1:-} in
     ssh "$NAME" "bash /root/vm-prep.sh $SGNL_DOMAIN" < "$CAROOT/rootCA.pem"
     scp -q "$ENVDIR/tls.crt" "$ENVDIR/tls.key" "$NAME:/opt/sgnl/dev-ca/"
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
-    echo "up: $NAME. Next: bin/sgnl-dev hosts (once), then deploy with bin/sgnl-dev kamal ..." ;;
+    echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
   inbound)
     shift; ca_bundle
