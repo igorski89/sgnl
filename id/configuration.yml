@@ -29,6 +29,11 @@ server:
 log:
   level: 'info'
 
+# No clock check against time.cloudflare.com at start (a warning only; the
+# host keeps time with its own NTP).
+ntp:
+  disable_startup_check: true
+
 totp:
   disable: true
 

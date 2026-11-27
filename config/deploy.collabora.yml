@@ -52,6 +52,8 @@ accessories:
           --o:ssl.enable=false
           --o:ssl.termination=true
           --o:welcome.enable=false
+          --o:fetch_update_check=0
+          --o:allow_update_popup=false
           --o:admin_console.enable=false
           --o:net.frame_ancestors=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
           --o:net.lok_allow.host[14]=drive.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>

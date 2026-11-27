@@ -143,6 +143,13 @@ env:
     GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
     GF_NEWS_NEWS_FEED_ENABLED: "false"
+    # No calls to third parties (egress log on dev, docs/DEV.md): no Gravatar
+    # (it got a hash of each person's email for avatars), no plugins
+    # "preinstalled" from grafana.com at every start (none is used), plugin
+    # signing keys from the image instead of grafana.com.
+    GF_SECURITY_DISABLE_GRAVATAR: "true"
+    GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
 
 accessories:
   victoriametrics:

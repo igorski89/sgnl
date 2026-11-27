@@ -120,8 +120,17 @@
 # Authorization header, and wildcard CORS never shares cookies.
 {"@type":"update","object":"Http","value":{"clientIpSource":"xForwardedFor","forwardedHops":1,"enableHsts":true,"usePermissiveCors":true}}
 
-# --- Web UI bundle: pinned release instead of "latest from GitHub" ------
-{"@type":"upsert","object":"Application","matchOn":["description"],"value":{"webui":{"description":"Stalwart Web Interface","resourceUrl":"https://github.com/stalwartlabs/webui/releases/download/v2/webui.zip","enable":true,"urlPrefix":{"/admin":true,"/account":true}}}}
+# --- ASN/country data off -----------------------------------------------
+# Stalwart downloads 4 IP-to-network/country tables (~65 MB, GitHub,
+# sapics/ip-location-db) at every start and every 24 h, for spam scoring by
+# the connecting server's network and country. Here every inbound mail
+# arrives from the SES forwarder (AWS addresses), so the data says nothing
+# about the real sender. Undo: delete this line and set Asn back to
+# Resource (stalwart-cli update Asn ...), then restart.
+{"@type":"update","object":"Asn","value":{"@type":"Disabled"}}
+
+# --- Web UI bundle: from the image (docker/stalwart/Dockerfile, pinned by checksum), not GitHub ---
+{"@type":"upsert","object":"Application","matchOn":["description"],"value":{"webui":{"description":"Stalwart Web Interface","resourceUrl":"file:///usr/local/share/stalwart-webui.zip","enable":true,"urlPrefix":{"/admin":true,"/account":true}}}}
 
 {"@type":"update","object":"Authentication","value":{"minPasswordLength":14}}
 {"@type":"update","object":"SystemSettings","value":{"defaultHostname":"mail.{{SGNL_APPS_DOMAIN}}","defaultDomainId":"#mail-domain"}}

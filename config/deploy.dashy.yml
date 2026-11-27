@@ -32,6 +32,10 @@ accessories:
         path: /
     files:
       - dashy/conf.yml.erb:/app/user-data/conf.yml
+      # Its update check (raw.githubusercontent.com at every start; it only
+      # prints a log line) replaced by an empty one. On an image upgrade,
+      # check the path still exists (/app/services/utils/update-checker.js).
+      - dashy/no-update-check.js:/app/services/utils/update-checker.js
     env:
       clear:
         TZ: "<%= ENV.fetch("SGNL_TZ") %>"
