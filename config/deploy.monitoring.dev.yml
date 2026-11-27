@@ -1,0 +1,52 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.monitoring.yml. arm64, the dev certificate, the dev CA trusted
+# (Grafana's login server calls, Alertmanager's STARTTLS to Mailpit: every
+# alert mail ends there). No co-tenant in dev: the rule dirs and flags for
+# its rules are left out.
+# Own image name: dev's arm64 builds never share a tag with prod's images.
+image: sgnl-grafana-dev
+builder:
+  arch: arm64
+# The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+proxy:
+  ssl:
+    certificate_pem: SGNL_TLS_CERT_PEM
+    private_key_pem: SGNL_TLS_KEY_PEM
+volumes:
+  - "sgnl_grafana_data:/var/lib/grafana"
+  - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"
+env:
+  clear:
+    SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+accessories:
+  vmalert:
+    cmd: >-
+      -datasource.url=http://sgnl-victoriametrics:8428
+      -remoteWrite.url=http://sgnl-victoriametrics:8428
+      -remoteRead.url=http://sgnl-victoriametrics:8428
+      -notifier.url=http://sgnl-alertmanager:9093
+      '-rule=/etc/vmalert/sgnl/*.yml'
+      -configCheckInterval=1m
+      -evaluationInterval=30s
+      -external.url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+    volumes: []
+  vmalert-logs:
+    cmd: >-
+      -datasource.url=http://sgnl-victorialogs:9428
+      -rule.defaultRuleType=vlogs
+      -remoteWrite.url=http://sgnl-victoriametrics:8428
+      -remoteRead.url=http://sgnl-victoriametrics:8428
+      -notifier.url=http://sgnl-alertmanager:9093
+      '-rule=/etc/vmalert/sgnl/*.yml'
+      -configCheckInterval=1m
+      -external.url=https://monitor.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>
+    volumes: []
+  alertmanager:
+    volumes:
+      - "sgnl_alertmanager_data:/alertmanager"
+      - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"

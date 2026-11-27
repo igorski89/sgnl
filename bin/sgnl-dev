@@ -12,8 +12,9 @@
 #   bin/sgnl-dev seed         test people with password + passkey (no human):
 #                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
 #   bin/sgnl-dev check [person]
-#                             sign in to webmail and vault, open a new document in
-#                             the office (browser, end to end; default alice)
+#                             sign in to webmail, vault, git, newsletters, monitoring
+#                             and open a new document in the office (browser, end
+#                             to end; default alice, the admin)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
 #                             deliver a mail as if SES received it (real forwarder code)
 #   bin/sgnl-dev stop | start
@@ -135,10 +136,10 @@ bootstrap() {
 
   step "kamal-proxy with the dev certificate"
   # Kamal places an accessory's custom certificate only during an app
-  # deploy: those of Mailpit, Collabora and the webmail go in first. dev-tls is the root placeholder's.
+  # deploy: those of the accessories with a web page go in first. dev-tls is the root placeholder's.
   vm "set -e; docker network inspect kamal >/dev/null 2>&1 || docker network create kamal >/dev/null
       install -d $pc/dev-tls; cp $ca/tls.crt $ca/tls.key $pc/dev-tls/
-      for svc in sgnl-stalwart-dev sgnl-collabora-dev sgnl-bulwark-dev; do
+      for svc in sgnl-stalwart-dev sgnl-collabora-dev sgnl-bulwark-dev sgnl-dashy-dev; do
         install -d $pc/\$svc/tls; cat $ca/tls.crt $ca/ca.pem > $pc/\$svc/tls/cert.pem; cp $ca/tls.key $pc/\$svc/tls/key.pem
       done"
   vm 'docker ps -q -f name=^kamal-proxy$' | grep -q . || K proxy boot -c config/deploy.id.yml
@@ -183,6 +184,24 @@ bootstrap() {
   vm 'docker ps -aq -f name=^sgnl-bulwark-web$' | grep -q . || K accessory boot web -c config/deploy.bulwark.yml
   K deploy -c config/deploy.vaultwarden.yml
 
+  step "git (Forgejo) and newsletters (listmonk)"
+  # Neither can run two containers on one database: stop first (as on prod).
+  [[ -z $(web sgnl-forgejo) ]] || K app stop -c config/deploy.forgejo.yml
+  K deploy -c config/deploy.forgejo.yml
+  bin/sgnl-env bin/sgnl-forgejo-setup auth
+  vm "docker restart \$(docker ps -q -f name=^sgnl-forgejo-web-dev-) >/dev/null"
+  [[ -z $(web sgnl-listmonk) ]] || K app stop -c config/deploy.listmonk.yml
+  K deploy -c config/deploy.listmonk.yml
+  bin/sgnl-env bin/sgnl-listmonk-setup
+
+  step "home page (Dashy) and monitoring"
+  vm 'docker ps -aq -f name=^sgnl-dashy-web$' | grep -q . || K accessory boot web -c config/deploy.dashy.yml
+  for a in victoriametrics vmagent vmalert alertmanager node-exporter cadvisor victorialogs vector vmalert-logs; do
+    vm "docker ps -aq -f name=^sgnl-$a\$" | grep -q . || K accessory boot $a -c config/deploy.monitoring.yml
+  done
+  K deploy -c config/deploy.monitoring.yml
+  bin/sgnl-env bin/sgnl-grafana-setup
+
   step "MCP gateway"
   K deploy -c config/deploy.mcp.yml
   # Its audit volume belongs to the distroless user (65532); prod's was set once by hand.
@@ -226,7 +245,7 @@ case ${1:-} in
     export PLAYWRIGHT_CORE
     u=${2:-alice} rc=0
     # One login at a time per person, at least a second apart (passkey sign count from the clock).
-    for app in inbox vault; do node host/dev/app-check.mjs $app "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1; sleep 2; done
+    for app in inbox vault git listmonk monitor; do node host/dev/app-check.mjs $app "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1; sleep 2; done
     node host/dev/office-check.mjs "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1
     exit $rc ;;
   inbound)
@@ -252,7 +271,7 @@ case ${1:-} in
     export PLAYWRIGHT_CORE
     # username|display name|groups (sgnl_users always). Their mailboxes are in
     # instance.dev/stalwart/mailboxes.ndjson.
-    for p in "alice|Alice Admin|admins developers mcp_users" "bob|Bob Example|mcp_users" \
+    for p in "alice|Alice Admin|admins developers forgejo_users mcp_users" "bob|Bob Example|mcp_users" \
              "sgnl-smoke|SGNL Smoke|mcp_users" "sgnl-smoke2|SGNL Smoke Two|mcp_users"; do
       IFS='|' read -r u n g <<<"$p"
       [[ -s $ENVDIR/people/$u.passkey.json ]] && { echo "$u: already set up"; continue; }

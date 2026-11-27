@@ -2,12 +2,13 @@
 // and checks that the app then shows the person's data. Proves the app's OIDC client, its trust in the dev CA and
 // its calls to the other apps.
 //
-//   node app-check.mjs <inbox|vault> <user> <apps-domain> <people-dir>
+//   node app-check.mjs <inbox|vault|git|listmonk|monitor> <user> <apps-domain> <people-dir>
 import { browserFor } from './login.mjs';
 
 const [APP, USER, APPS, DIR] = process.argv.slice(2);
-if (!['inbox', 'vault'].includes(APP) || !USER || !APPS?.endsWith('.test') || !DIR) {
-  console.error('usage: node app-check.mjs <inbox|vault> <user> <apps-domain ending in .test> <people-dir>');
+const START = { inbox: '/', vault: '/', git: '/user/oauth2/authelia', listmonk: '/admin', monitor: '/' };
+if (!(APP in START) || !USER || !APPS?.endsWith('.test') || !DIR) {
+  console.error('usage: node app-check.mjs <' + Object.keys(START).join('|') + '> <user> <apps-domain ending in .test> <people-dir>');
   process.exit(64);
 }
 const HOST = `${APP}.${APPS}`;
@@ -27,11 +28,17 @@ const done = {
   // vault itself, means the sign-in worked.
   vault: async () => onApp() && await page.getByText(/master password|My vault|Vaults/i).first().isVisible().catch(() => false)
     && !await page.locator('input[formcontrolname=email]:visible').first().isVisible().catch(() => false),
+  // Signed in: the app's own page (not its login page) with the person's name on it.
+  git: async () => onApp() && !page.url().includes('/user/login') && (await page.innerText('body').catch(() => '')).includes(USER),
+  listmonk: async () => onApp() && new URL(page.url()).pathname.startsWith('/admin') && !page.url().includes('login')
+    && await page.getByText(/Campaigns/).first().isVisible().catch(() => false),
+  monitor: async () => onApp() && !page.url().includes('/login')
+    && await page.getByText(/Dashboards|Welcome to Grafana/i).first().isVisible().catch(() => false),
 };
 
 let ok = false;
 try {
-  await page.goto(`https://${HOST}/`);
+  await page.goto(`https://${HOST}${START[APP]}`);
   for (let i = 0; i < 60 && !ok; i++) {
     await page.waitForTimeout(1000);
     if (await done[APP]()) { ok = true; break; }

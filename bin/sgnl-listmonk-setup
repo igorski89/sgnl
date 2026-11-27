@@ -23,7 +23,7 @@ Sets:
   bounce.*         processing on, SES webhook on and limited to our SNS topic
                    (Terraform output campaigns_events_topic_arn); hard bounce
                    or complaint -> blocklist, 2 soft bounces -> nothing
-                   (Amazon's advice)
+                   (Amazon's advice). Dev instances: webhooks off, no topic.
 then restarts listmonk, which reads settings at start. SMTP changes made
 in listmonk's UI are overwritten by the next run: change them here.
 
@@ -45,6 +45,9 @@ HOST, APPS, DOMAIN, REALM, ADMIN = (I["SGNL_HOST"], I["SGNL_APPS_DOMAIN"], I["SG
 # routes its bounces/complaints back to listmonk (aws/campaigns.tf).
 FROM = f'{I["SGNL_ORG_NAME"]} <campaigns@{DOMAIN}>'
 CONFIG_SET = I["SGNL_PREFIX"] + "-campaigns"
+# A dev instance (bin/sgnl-dev) has no SES/SNS: mail goes to Mailpit and
+# bounce webhooks stay off (Amazon signs them; nothing to receive).
+DEV = I.get("SGNL_ENV") == "dev"
 
 
 def secret(name):
@@ -100,9 +103,9 @@ UPDATE settings SET value = json_patch(value, {q(json.dumps(oidc))}), updated_at
   WHERE key = 'security.oidc';
 UPDATE settings SET value = json_array({q(FROM)}), updated_at = {NOW} WHERE key = 'app.from_email';
 UPDATE settings SET value = json({q(json.dumps(smtp))}), updated_at = {NOW} WHERE key = 'smtp';
-UPDATE settings SET value = 'true', updated_at = {NOW}
-  WHERE key IN ('bounce.enabled', 'bounce.webhooks_enabled');
-UPDATE settings SET value = json_patch(value, {q(json.dumps({"enabled": True, "topic_arns": [topic_arn()]}))}), updated_at = {NOW}
+UPDATE settings SET value = 'true', updated_at = {NOW} WHERE key = 'bounce.enabled';
+UPDATE settings SET value = {q("false" if DEV else "true")}, updated_at = {NOW} WHERE key = 'bounce.webhooks_enabled';
+UPDATE settings SET value = json_patch(value, {q(json.dumps({"enabled": False, "topic_arns": []} if DEV else {"enabled": True, "topic_arns": [topic_arn()]}))}), updated_at = {NOW}
   WHERE key = 'bounce.ses';
 UPDATE settings SET value = json({q(json.dumps(bounce_actions))}), updated_at = {NOW} WHERE key = 'bounce.actions';
 UPDATE settings SET value = json_patch(value, '{{"enabled": true}}'), updated_at = {NOW}

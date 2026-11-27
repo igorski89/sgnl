@@ -1,0 +1,14 @@
+# Dev destination (bin/sgnl-dev; `kamal ... -d dev`): merged over
+# deploy.dashy.yml. The dev certificate on kamal-proxy (placed first by
+# bin/sgnl-dev bootstrap: this service has no app).
+ssh:
+  user: root
+  port: <%= ENV.fetch("SGNL_DEV_SSH_PORT", "60022") %>
+  keys_only: true
+  keys: ["<%= ENV.fetch("HOME") %>/.lima/_config/user"]
+accessories:
+  web:
+    proxy:
+      ssl:
+        certificate_pem: SGNL_TLS_CERT_PEM
+        private_key_pem: SGNL_TLS_KEY_PEM
