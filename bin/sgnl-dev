@@ -320,9 +320,9 @@ case ${1:-} in
     export PLAYWRIGHT_CORE
     rc=0
     # Who gets what (seed): alice is an admin (admins, developers, forgejo_users), bob an ordinary user (no git
-    # group, no newsletter account), eve in no group: every app must refuse her.
+    # group), eve in no group: every app must refuse her.
     # One login at a time per person, at least a second apart (passkey sign count from the clock).
-    for row in "alice admin admin admin admin admin admin" "bob user user refused refused user user" \
+    for row in "alice admin admin admin admin admin admin" "bob user user refused user user user" \
                "eve refused refused refused refused refused refused"; do
       read -r u e1 e2 e3 e4 e5 e6 <<<"$row"; set -- $e1 $e2 $e3 $e4 $e5 $e6
       for app in inbox vault git listmonk monitor drive; do
@@ -367,6 +367,15 @@ case ${1:-} in
       sleep 2
       node host/dev/seed-person.mjs "$u" "$SGNL_DOMAIN" "$SGNL_APPS_DOMAIN" "$ENVDIR/people"
     done
+    # Newsletters: everyone (not eve) is a listmonk user, super admin for now
+    # (decided 2026-11-27: full control through MCP, rights later). listmonk
+    # doesn't create users at sign-in; the gateway's tokens act as them.
+    vm "docker exec -i \$(docker ps -q -f name=^sgnl-listmonk-web-dev-) sqlite3 /listmonk/data/listmonk.db" <<SQL
+INSERT OR IGNORE INTO users (username, email, name, type, user_role_id, status) VALUES
+  ('bob', 'bob@$SGNL_DOMAIN', 'Bob Example', 'user', 1, 'enabled'),
+  ('sgnl-smoke', 'sgnl-smoke@$SGNL_DOMAIN', 'SGNL Smoke', 'user', 1, 'enabled'),
+  ('sgnl-smoke2', 'sgnl-smoke2@$SGNL_DOMAIN', 'SGNL Smoke Two', 'user', 1, 'enabled');
+SQL
     # Git: the org + team Developers need the admin's account, which Forgejo
     # creates at the first sign-in.
     sleep 2
