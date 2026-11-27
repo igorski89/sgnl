@@ -11,8 +11,9 @@
 #   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
 #   bin/sgnl-dev seed         test people with password + passkey (no human):
 #                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
-#   bin/sgnl-dev office-check [person]
-#                             open a new document in the office as alice (end to end)
+#   bin/sgnl-dev check [person]
+#                             sign in to webmail and vault, open a new document in
+#                             the office (browser, end to end; default alice)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
 #                             deliver a mail as if SES received it (real forwarder code)
 #   bin/sgnl-dev stop | start
@@ -134,10 +135,10 @@ bootstrap() {
 
   step "kamal-proxy with the dev certificate"
   # Kamal places an accessory's custom certificate only during an app
-  # deploy: Mailpit's and Collabora's go in first. dev-tls is the root placeholder's.
+  # deploy: those of Mailpit, Collabora and the webmail go in first. dev-tls is the root placeholder's.
   vm "set -e; docker network inspect kamal >/dev/null 2>&1 || docker network create kamal >/dev/null
       install -d $pc/dev-tls; cp $ca/tls.crt $ca/tls.key $pc/dev-tls/
-      for svc in sgnl-stalwart-dev sgnl-collabora-dev; do
+      for svc in sgnl-stalwart-dev sgnl-collabora-dev sgnl-bulwark-dev; do
         install -d $pc/\$svc/tls; cat $ca/tls.crt $ca/ca.pem > $pc/\$svc/tls/cert.pem; cp $ca/tls.key $pc/\$svc/tls/key.pem
       done"
   vm 'docker ps -q -f name=^kamal-proxy$' | grep -q . || K proxy boot -c config/deploy.id.yml
@@ -178,6 +179,10 @@ bootstrap() {
   vm 'docker ps -aq -f name=^sgnl-tika$' | grep -q . || K accessory boot tika -c config/deploy.opencloud.yml
   K deploy -c config/deploy.opencloud.yml
 
+  step "webmail (Bulwark) and vault (a dev Vaultwarden)"
+  vm 'docker ps -aq -f name=^sgnl-bulwark-web$' | grep -q . || K accessory boot web -c config/deploy.bulwark.yml
+  K deploy -c config/deploy.vaultwarden.yml
+
   step "MCP gateway"
   K deploy -c config/deploy.mcp.yml
   # Its audit volume belongs to the distroless user (65532); prod's was set once by hand.
@@ -215,11 +220,15 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
-  office-check)
+  check)
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
     : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
     export PLAYWRIGHT_CORE
-    node host/dev/office-check.mjs "${2:-alice}" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" ;;
+    u=${2:-alice} rc=0
+    # One login at a time per person, at least a second apart (passkey sign count from the clock).
+    for app in inbox vault; do node host/dev/app-check.mjs $app "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1; sleep 2; done
+    node host/dev/office-check.mjs "$u" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" || rc=1
+    exit $rc ;;
   inbound)
     shift; ca_bundle
     pw=$(mktemp); trap 'rm -f "$pw"' EXIT

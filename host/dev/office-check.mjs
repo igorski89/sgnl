@@ -4,8 +4,7 @@
 // drive over HTTPS (WOPI), so this also proves that the two trust each other's dev certificate. Deletes the document.
 //
 //   node office-check.mjs <user> <apps-domain> <people-dir>
-import fs from 'node:fs';
-import path from 'node:path';
+import { browserFor } from './login.mjs';
 
 const [USER, APPS, DIR] = process.argv.slice(2);
 if (!USER || !APPS?.endsWith('.test') || !DIR) {
@@ -14,20 +13,7 @@ if (!USER || !APPS?.endsWith('.test') || !DIR) {
 }
 const DRIVE = `https://drive.${APPS}`;
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), USER, ...a);
-const password = fs.readFileSync(path.join(DIR, `${USER}.password`), 'utf8').trim();
-const exported = JSON.parse(fs.readFileSync(path.join(DIR, `${USER}.passkey.json`), 'utf8'));
-
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
-const ctx = await browser.newContext();
-const page = await ctx.newPage();
-const cdp = await ctx.newCDPSession(page);
-await cdp.send('WebAuthn.enable');
-const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
-// Sign count from the clock (the login server marks a repeated count as a cloned passkey, for good).
-for (const c of exported) {
-  await cdp.send('WebAuthn.addCredential', { authenticatorId, credential: { ...c, signCount: Math.max(c.signCount, Math.floor(Date.now() / 1000)) } });
-}
+const { browser, ctx, page, loginStep } = await browserFor(USER, DIR);
 
 let ok = false;
 try {
@@ -46,16 +32,7 @@ try {
       });
       continue;
     }
-    if (await page.locator('#username-textfield:not([disabled])').count() && await page.locator('#password-textfield').count()) {
-      await page.fill('#username-textfield', USER); await page.fill('#password-textfield', password);
-      await page.click('#sign-in-button'); await page.waitForTimeout(3000); continue;
-    }
-    if (!await page.locator('#username-textfield').count() && await page.locator('#password-textfield:not([disabled])').count()) {
-      await page.fill('#password-textfield', password); await page.click('#sign-in-button'); await page.waitForTimeout(3000); continue;
-    }
-    if (await page.locator('#openid-consent-accept:not([disabled])').count()) { await page.click('#openid-consent-accept'); continue; }
-    const no = page.getByRole('button', { name: /^no$/i });
-    if (await no.count()) { await no.click(); continue; }
+    await loginStep();
   }
   if (!token) throw new Error('no drive session');
   log('signed in to the drive');
