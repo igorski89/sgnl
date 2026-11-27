@@ -5,13 +5,19 @@
 # nothing here can reach prod's vault, DNS, mail or backups.
 #
 #   bin/sgnl-dev up           create + start the VM, CA, secrets, VM prep
+#   bin/sgnl-dev bootstrap    deploy and configure the apps (idempotent)
 #   bin/sgnl-dev kamal ...    Kamal against the VM: -d dev, dev secrets
 #   bin/sgnl-dev run <cmd>    any repo tool against the dev instance
 #   bin/sgnl-dev hosts        the /etc/hosts line for the Mac (sudo, once)
 #   bin/sgnl-dev seed         test people with password + passkey (no human):
 #                             alice (admin), bob; files in ~/.sgnl-dev/<name>/people
+#   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
+#                             deliver a mail as if SES received it (real forwarder code)
 #   bin/sgnl-dev stop | start
-#   bin/sgnl-dev destroy      delete the VM and its secrets/CA (asks)
+#   bin/sgnl-dev destroy      delete the VM and its secrets (asks); keeps the
+#                             dev CA, so the Mac's trust in it stays valid
+#
+# From nothing: up, hosts (once per Mac), bootstrap, seed.
 #
 # Env: SGNL_DEV_NAME (default sgnl-dev), SGNL_DEV_SSH_PORT (default 60022).
 set -euo pipefail
@@ -104,6 +110,82 @@ EOF
   fi
 }
 
+vm() { ssh "$NAME" "$@"; }
+web() { vm "docker ps -q -f name=^$1-web-dev-"; }   # a Kamal app's running container
+stw() {   # stalwart-cli as the dev mail server's recovery admin
+  local r; r=$(bin/sgnl-secret stalwart-recovery-admin)
+  STALWART_URL=https://mail.$SGNL_APPS_DOMAIN STALWART_USER=${r%%:*} STALWART_PASSWORD=${r#*:} stalwart-cli "$@" </dev/null
+}
+has_secret() { bin/sgnl-secret "$1" >/dev/null 2>&1; }
+K() { bin/sgnl-env kamal "$@" -d dev; }
+step() { printf '\n== %s\n' "$*"; }
+
+bootstrap() {
+  secrets_file; ca_bundle
+  local ca=/opt/sgnl/dev-ca pc=/root/.kamal/proxy/apps-config
+
+  step "base image of the mail server (arm64, in the Mac's local registry)"
+  local img; img=$(sed -n 's/^ *STALWART_IMAGE: *//p' config/deploy.stalwart.dev.yml)
+  curl -sf "http://${img%%/*}/v2/$(cut -d/ -f2 <<<"${img%:*}")/tags/list" | grep -q "\"${img##*:}\"" ||
+    { echo "missing $img: build it as in instance/docs/PLAN-dev-env.md (Stalwart arm64)" >&2; return 1; }
+
+  step "kamal-proxy with the dev certificate"
+  # Kamal places an accessory's custom certificate only during an app
+  # deploy: Mailpit's goes in first. dev-tls is the root placeholder's.
+  vm "set -e; docker network inspect kamal >/dev/null 2>&1 || docker network create kamal >/dev/null
+      install -d $pc/dev-tls $pc/sgnl-stalwart-dev/tls
+      cp $ca/tls.crt $ca/tls.key $pc/dev-tls/
+      cat $ca/tls.crt $ca/ca.pem > $pc/sgnl-stalwart-dev/tls/cert.pem; cp $ca/tls.key $pc/sgnl-stalwart-dev/tls/key.pem"
+  vm 'docker ps -q -f name=^kamal-proxy$' | grep -q . || K proxy boot -c config/deploy.id.yml
+
+  step "login server"
+  K deploy -c config/deploy.id.yml
+  bin/sgnl-env bin/sgnl-root-placeholder sgnl-id-root id
+  local c; c=$(web sgnl-id)
+  for g in sgnl_users forgejo_users admins developers sgnl_invited mcp_users; do
+    vm "docker exec $c authelia groups create $g --config /config/configuration.yml >/dev/null 2>&1" || true
+  done
+
+  step "mail server + Mailpit"
+  vm 'docker ps -aq -f name=^sgnl-mailpit$' | grep -q . || K accessory boot mailpit -c config/deploy.stalwart.yml
+  # It publishes 465/993 itself: no overlap, stop the old one first (as on prod).
+  [[ -z $(web sgnl-stalwart) ]] || K app stop -c config/deploy.stalwart.yml
+  K deploy -c config/deploy.stalwart.yml
+  bin/sgnl-env bin/stalwart-apply
+  bin/sgnl-env bin/stalwart-apply stalwart/plan-oidc.ndjson
+  bin/sgnl-env host/dev/stalwart-cert.sh "$ENVDIR/tls.crt" "$ENVDIR/tls.key" "$CAROOT/rootCA.pem"
+  vm "docker restart \$(docker ps -q -f name=^sgnl-stalwart-web-dev-) >/dev/null"
+  sleep 15
+  # smoke@: the smoke accounts are its members (set on the server, as in prod).
+  local gid uid
+  gid=$(stw query Account --where name=smoke --fields id --json | python3 -c 'import json,sys; print(json.loads(sys.stdin.readline())["id"])')
+  for u in sgnl-smoke sgnl-smoke2; do
+    uid=$(stw query Account --where name=$u --fields id --json | python3 -c 'import json,sys; print(json.loads(sys.stdin.readline())["id"])')
+    stw update Account "$uid" --json "{\"memberGroupIds\":{\"$gid\":true}}" >/dev/null
+  done
+  # The forwarder's login (host/dev/inbound.mjs); prod's goes to AWS.
+  has_secret ses-relay-app-password || bin/sgnl-env bin/stalwart-relay-app-password
+
+  step "MCP gateway"
+  K deploy -c config/deploy.mcp.yml
+  # Its audit volume belongs to the distroless user (65532); prod's was set once by hand.
+  vm "docker run --rm -v sgnl_mcp_audit:/data alpine sh -c 'chown 65532:65532 /data && chmod 700 /data'
+      docker restart \$(docker ps -q -f name=^sgnl-mcp-web-dev-) >/dev/null"
+
+  step "backups to Garage"
+  scp -q host/dev/garage.sh "$NAME:/root/garage.sh"
+  local keys; keys=$(vm "bash /root/garage.sh $SGNL_BACKUP_BUCKET")
+  if [[ -n $keys ]]; then
+    printf '%s' "${keys%% *}" | bin/sgnl-secret --set "$SGNL_PREFIX-backup-s3-access-key-id"
+    printf '%s' "${keys#* }" | bin/sgnl-secret --set "$SGNL_PREFIX-backup-s3-secret-access-key"
+  fi
+  unset keys
+  has_secret restic-password || openssl rand -base64 32 | tr -d '\n' | bin/sgnl-secret --set "$SGNL_PREFIX-restic-password"
+  bin/sgnl-env bin/sgnl-backup-install
+
+  step "done: bin/sgnl-dev seed next"
+}
+
 case ${1:-} in
   up)
     command -v limactl >/dev/null || { echo "brew install lima" >&2; exit 1; }
@@ -120,6 +202,13 @@ case ${1:-} in
     scp -q "$ENVDIR/tls.crt" "$ENVDIR/tls.key" "$NAME:/opt/sgnl/dev-ca/"
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once), then deploy with bin/sgnl-dev kamal ..." ;;
+  bootstrap) bootstrap ;;
+  inbound)
+    shift; ca_bundle
+    pw=$(mktemp); trap 'rm -f "$pw"' EXIT
+    bin/sgnl-secret ses-relay-app-password > "$pw"
+    RELAY_PASSWORD_FILE=$pw STALWART_HOST=mail.$SGNL_APPS_DOMAIN RELAY_USERNAME=ses-relay@$SGNL_DOMAIN \
+      NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem node host/dev/inbound.mjs "$@" ;;
   kamal)
     shift; secrets_file; ca_bundle
     exec bin/sgnl-env kamal "$@" -d dev ;;
@@ -151,8 +240,11 @@ case ${1:-} in
   stop) limactl stop "$NAME" ;;
   start) limactl start "$NAME" ;;
   destroy)
-    read -r -p "Delete VM $NAME and $ENVDIR (secrets, certificate)? type $NAME: " a
+    read -r -p "Delete VM $NAME and $ENVDIR (secrets, certificate, people)? type $NAME: " a
     [[ $a == "$NAME" ]] || { echo "not deleted"; exit 1; }
-    limactl delete -f "$NAME"; rm -rf "${ENVDIR:?}"; echo "deleted $NAME" ;;
-  *) sed -n 2,16p "$0"; exit 1 ;;
+    limactl delete -f "$NAME"; rm -rf "${ENVDIR:?}"
+    # The next VM gets a new host key on the same port.
+    ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
+    echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
+  *) sed -n 2,21p "$0"; exit 1 ;;
 esac
