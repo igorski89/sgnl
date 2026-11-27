@@ -66,6 +66,7 @@ has, so a laptop build uses thin LTO (build args in the fork's
     bin/sgnl-dev run bin/<tool> ...                        # any repo tool against dev
     bin/sgnl-dev inbound <file.eml> <from> <rcpt>          # a mail "from outside"
     bin/sgnl-dev check [person]                            # browser checks, as above
+    bin/sgnl-dev smoke tokens; bin/sgnl-dev smoke          # the MCP smoke test (runner from ~/Work/sgnl-mcp)
     bin/sgnl-dev stop | start                              # everything comes back
     bin/sgnl-dev destroy                                   # asks; keeps the CA
 

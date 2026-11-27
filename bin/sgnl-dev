@@ -15,6 +15,8 @@
 #                             sign in to webmail, vault, git, newsletters, monitoring
 #                             and open a new document in the office (browser, end
 #                             to end; default alice, the admin)
+#   bin/sgnl-dev smoke tokens   MCP tokens for the two smoke accounts (after seed)
+#   bin/sgnl-dev smoke [flags]  the MCP smoke test against dev (e.g. -read-only)
 #   bin/sgnl-dev inbound <file.eml> <from> <rcpt>[,...]
 #                             deliver a mail as if SES received it (real forwarder code)
 #   bin/sgnl-dev stop | start
@@ -242,6 +244,29 @@ case ${1:-} in
     ssh "$NAME" 'chmod 644 /opt/sgnl/dev-ca/tls.crt /opt/sgnl/dev-ca/tls.key'
     echo "up: $NAME. Next: bin/sgnl-dev hosts (once per Mac), then bin/sgnl-dev bootstrap" ;;
   bootstrap) bootstrap ;;
+  smoke)
+    ca_bundle
+    export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
+    : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
+    export PLAYWRIGHT_CORE
+    if [[ ${2:-} == tokens ]]; then
+      for u in sgnl-smoke sgnl-smoke2; do
+        node host/dev/mcp-token.mjs "$u" "$SGNL_APPS_DOMAIN" "$SGNL_REALM" "$ENVDIR/people" "$ENVDIR/tokens"
+        sleep 2   # passkey sign count from the clock: logins at least 1 s apart
+      done; exit 0
+    fi
+    shift
+    # The runner is sgnl-mcp's cmd/sgnl-mcp-smoke (SGNL_MCP_DIR, default ~/Work/sgnl-mcp), built on first use.
+    bin=$STATE/bin/sgnl-mcp-smoke src=${SGNL_MCP_DIR:-$HOME/Work/sgnl-mcp}
+    if [[ ! -x $bin ]]; then
+      mkdir -p "$STATE/bin"
+      (cd "$src" && v=$(awk '/^go /{print $2}' go.mod) &&
+        if command -v mise >/dev/null; then mise x "go@$v" -- go build -o "$bin" ./cmd/sgnl-mcp-smoke; else go build -o "$bin" ./cmd/sgnl-mcp-smoke; fi)
+    fi
+    SGNL_SMOKE_URL="https://mcp.$SGNL_APPS_DOMAIN/mcp" SGNL_SMOKE_ISSUER="https://id.$SGNL_APPS_DOMAIN/realms/$SGNL_REALM" \
+    SGNL_SMOKE_CLIENT_ID=sgnl-mcp-claude-code SGNL_SMOKE_A_USER=sgnl-smoke SGNL_SMOKE_B_USER=sgnl-smoke2 \
+    SGNL_SMOKE_A_TOKEN="$ENVDIR/tokens/sgnl-smoke-token.json" SGNL_SMOKE_B_TOKEN="$ENVDIR/tokens/sgnl-smoke2-token.json" \
+    SGNL_SMOKE_SHARED="smoke@$SGNL_DOMAIN" exec "$bin" "$@" ;;
   check)
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
     : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
@@ -284,7 +309,12 @@ case ${1:-} in
       bin/sgnl-env bin/sgnl-id setup-email "$u" 2 >/dev/null
       sleep 2
       node host/dev/seed-person.mjs "$u" "$SGNL_DOMAIN" "$SGNL_APPS_DOMAIN" "$ENVDIR/people"
-    done ;;
+    done
+    # Git: the org + team Developers need the admin's account, which Forgejo
+    # creates at the first sign-in.
+    sleep 2
+    node host/dev/app-check.mjs git "$SGNL_ADMIN_USER" "$SGNL_APPS_DOMAIN" "$ENVDIR/people" >/dev/null
+    bin/sgnl-env bin/sgnl-forgejo-setup org | grep -v '^Delete the token' ;;
   stop) limactl stop "$NAME" ;;
   start) limactl start "$NAME" ;;
   destroy)
@@ -294,5 +324,5 @@ case ${1:-} in
     # The next VM gets a new host key on the same port.
     ssh-keygen -R "[127.0.0.1]:$PORT" -f "$STATE/known_hosts" >/dev/null 2>&1 || true
     echo "deleted $NAME (the dev CA in $CAROOT stays)" ;;
-  *) sed -n 2,24p "$0"; exit 1 ;;
+  *) sed -n 2,26p "$0"; exit 1 ;;
 esac
