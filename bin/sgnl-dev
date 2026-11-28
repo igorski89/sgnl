@@ -313,7 +313,7 @@ case ${1:-} in
     SGNL_SMOKE_URL="https://mcp.$SGNL_APPS_DOMAIN/mcp" SGNL_SMOKE_ISSUER="https://id.$SGNL_APPS_DOMAIN/realms/$SGNL_REALM" \
     SGNL_SMOKE_CLIENT_ID=sgnl-mcp-claude-code SGNL_SMOKE_A_USER=sgnl-smoke SGNL_SMOKE_B_USER=sgnl-smoke2 \
     SGNL_SMOKE_A_TOKEN="$ENVDIR/tokens/sgnl-smoke-token.json" SGNL_SMOKE_B_TOKEN="$ENVDIR/tokens/sgnl-smoke2-token.json" \
-    SGNL_SMOKE_SHARED="smoke@$SGNL_DOMAIN" exec "$bin" "$@" ;;
+    SGNL_SMOKE_SHARED="smoke@$SGNL_DOMAIN" exec "$bin" -newsletter "$@" ;;   # dev: newsletter steps too (mail only to Mailpit)
   check)
     export NODE_EXTRA_CA_CERTS=$CAROOT/rootCA.pem
     : "${PLAYWRIGHT_CORE:=$(ls "$HOME"/Work/authelia/sgnl/e2e/browser/node_modules/playwright-core/index.mjs 2>/dev/null || echo playwright-core)}"
