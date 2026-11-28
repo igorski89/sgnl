@@ -23,9 +23,3 @@ volumes:
 env:
   clear:
     SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
-    # Bearer tokens from the gateway (fork: FORK.md "API bearer access
-    # tokens"), dev only for now: the listmonk MCP spike.
-    LISTMONK_api_jwt__enabled: "true"
-    LISTMONK_api_jwt__issuer: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
-    LISTMONK_api_jwt__audiences: "listmonk"
-    LISTMONK_api_jwt__clients: "sgnl-mcp"

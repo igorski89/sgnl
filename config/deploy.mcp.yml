@@ -61,6 +61,10 @@ env:
     # The instance name the bin/sgnl-* tools take (--instance), for commands the
     # admin tools suggest (v0.1.34+; older versions ignore it).
     SGNL_MCP_INSTANCE: "<%= ENV.fetch("SGNL_ORG_SLUG") %>"
+    # Newsletter tools (listmonk, v0.1.35+): the person's token exchanged for
+    # audience listmonk; listmonk accepts it as that person. Undo: remove both.
+    SGNL_MCP_NEWSLETTER_URL: "http://sgnl-listmonk:9000"
+    SGNL_MCP_NEWSLETTER_AUDIENCE: "listmonk"
     SGNL_MCP_PUBLIC_URL: "https://mcp.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/mcp"
     SGNL_MCP_ISSUER: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
     SGNL_MCP_JMAP_URL: "https://mail.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/jmap/session"

@@ -5,7 +5,7 @@ image: sgnl-mcp-dev
 builder:
   arch: arm64
   args:
-    SGNL_MCP_IMAGE: ghcr.io/igorski89/sgnl-mcp:v0.1.35-rc.3
+    SGNL_MCP_IMAGE: ghcr.io/igorski89/sgnl-mcp:v0.1.35
 # The VM's SSH via Lima's localhost forward (~/.sgnl-dev/ssh_config).
 ssh:
   user: root
@@ -22,8 +22,3 @@ volumes:
 env:
   clear:
     SSL_CERT_FILE: /etc/ssl/certs/sgnl-dev-ca.pem
-    # Newsletter tools (listmonk, PLAN-mcp-newsletter.md): dev first. The
-    # gateway exchanges the person's token for audience=listmonk; listmonk
-    # accepts it as that person (api_jwt, config/deploy.listmonk.dev.yml).
-    SGNL_MCP_NEWSLETTER_URL: "http://sgnl-listmonk:9000"
-    SGNL_MCP_NEWSLETTER_AUDIENCE: "listmonk"

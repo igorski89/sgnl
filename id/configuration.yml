@@ -556,7 +556,7 @@ identity_providers:
         consent_mode: 'implicit'
         # Per-app tokens (M3): the gateway asks for audience=<app client id>;
         # the exchange then also enforces that app's policy.
-        audience: ['sgnl-mcp', 'opencloud', 'stalwart-webui', 'grafana']
+        audience: ['sgnl-mcp', 'opencloud', 'stalwart-webui', 'grafana', 'listmonk']
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'

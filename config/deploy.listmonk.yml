@@ -66,6 +66,14 @@ env:
     LISTMONK_db__path: "/listmonk/data/listmonk.db"
     # Super admin created on the first start only (break-glass).
     LISTMONK_ADMIN_USER: "<%= ENV.fetch("SGNL_ADMIN_USER") %>"
+    # The MCP gateway acts as the person (fork: FORK.md "API bearer access
+    # tokens"): the login server's token, exchanged for audience listmonk,
+    # is accepted as the listmonk user with that email (newsletter tools,
+    # PLAN-mcp-newsletter.md). Undo: remove these four lines, deploy.
+    LISTMONK_api_jwt__enabled: "true"
+    LISTMONK_api_jwt__issuer: "https://id.<%= ENV.fetch("SGNL_APPS_DOMAIN") %>/realms/<%= ENV.fetch("SGNL_REALM") %>"
+    LISTMONK_api_jwt__audiences: "listmonk"
+    LISTMONK_api_jwt__clients: "sgnl-mcp"
   secret:
     - LISTMONK_ADMIN_PASSWORD
 
