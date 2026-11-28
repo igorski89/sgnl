@@ -127,6 +127,12 @@ passwords:
 bin/sgnl-vault-sync
 ```
 
+It also gives her a newsletter (listmonk) account (`bin/sgnl-listmonk-sync`;
+everyone in `sgnl_users`, role "Super Admin" for now), which the AI
+gateway's newsletter tools act as. Disabling her login, or taking her out
+of `sgnl_users`, disables it (never deleted); `bin/sgnl-id` runs it on
+every group change, disable and enable. Skip with `SGNL_NO_LISTMONK_SYNC=1`.
+
 **SaaS with SSO (Stripe):** if she needs one, invite her there with her
 company address (anna@example.com) and pick her role in that service:
 Stripe → Settings → Team and security → Team. Roles stay in Stripe;

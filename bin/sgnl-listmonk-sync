@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""listmonk accounts follow the login server: everyone in sgnl_users has a
+listmonk user (matched by email), enabled while their login is. Idempotent.
+
+  bin/sgnl-listmonk-sync --instance <name>            # apply
+  bin/sgnl-listmonk-sync --instance <name> --dry-run  # show, change nothing
+
+Why: listmonk doesn't create users at sign-in, and the MCP gateway's
+newsletter tools act as the person's own listmonk user (FORK.md "API bearer
+access tokens", instance/docs/PLAN-mcp-newsletter.md). bin/sgnl-id runs this
+after the changes that run bin/sgnl-vault-sync (group changes, finish-invite,
+disable, enable).
+
+  - a member without a listmonk user: one is created (type user, role
+    "Super Admin" for now: everyone is an admin until roles are decided;
+    password login off, so only the login server's SSO or the gateway).
+  - a member with one: status follows the login (enabled/disabled). The
+    role is left as it is (set by hand later).
+  - a listmonk user (type user) whose email isn't in sgnl_users: disabled,
+    never deleted (campaigns and history stay).
+  - API users (type api) are never touched.
+
+The SQL goes over SSH on stdin to the sqlite3 CLI in listmonk's container,
+as bin/sgnl-listmonk-setup does. listmonk reads users from the database on
+every request, so no restart.
+"""
+import importlib.machinery, importlib.util, json, os, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+import instance  # noqa: E402  (takes --instance first)
+I = instance.load()
+_l = importlib.machinery.SourceFileLoader("sgnl_id", os.path.join(ROOT, "bin", "sgnl-id"))
+_s = importlib.util.spec_from_loader("sgnl_id", _l); idp = importlib.util.module_from_spec(_s); _l.exec_module(idp)
+
+ROLE = "Super Admin"
+GROUP = "sgnl_users"
+REMOTE = ("set -e; c=$(docker ps -q --filter label=service=sgnl-listmonk --filter label=role=web | head -1); "
+          "[ -n \"$c\" ] || { echo 'listmonk is not running' >&2; exit 1; }; "
+          "docker exec -i $c sqlite3 /listmonk/data/listmonk.db")
+
+
+def q(s):
+    if "\0" in s:
+        sys.exit("sgnl-listmonk-sync: NUL in a value")
+    return "'" + s.replace("'", "''") + "'"
+
+
+def sql(text):
+    r = subprocess.run(["ssh", f"root@{I['SGNL_HOST']}", REMOTE], input=text, text=True, capture_output=True)
+    if r.returncode:
+        sys.exit("sgnl-listmonk-sync: " + r.stderr.strip()[-400:])
+    return r.stdout
+
+
+def main():
+    dry = sys.argv[1:] == ["--dry-run"]
+    if sys.argv[1:] not in ([], ["--dry-run"]):
+        sys.exit(__doc__)
+    members = [m for m in idp.group_members(GROUP) if m.get("email")]
+    want = {m["email"].lower(): m for m in members}
+    rows = sql(".mode json\nSELECT username, lower(email) AS email, status FROM users WHERE type='user';\n").strip()
+    have = {r["email"]: r for r in (json.loads(rows) if rows else [])}
+
+    create = [m for e, m in want.items() if e not in have]
+    status = [(e, "enabled" if m.get("enabled", True) else "disabled") for e, m in want.items()
+              if e in have and have[e]["status"] != ("enabled" if m.get("enabled", True) else "disabled")]
+    leave = [e for e, r in have.items() if e not in want and r["status"] != "disabled"]
+
+    print(f"login server: {len(want)} people in {GROUP}; listmonk: {len(have)} users")
+    for m in create:
+        print(f"  create {m['username']} ({ROLE}{'' if m.get('enabled', True) else ', disabled'})")
+    for e, st in status:
+        print(f"  {have[e]['username']}: {st} (as their login)")
+    for e in leave:
+        print(f"  {have[e]['username']}: disabled (not in {GROUP})")
+    if not (create or status or leave):
+        print("  nothing to change")
+    if dry or not (create or status or leave):
+        if dry:
+            print("dry run: nothing changed")
+        return
+
+    stmts = [".bail on", "BEGIN;",
+             f"SELECT CASE WHEN (SELECT count(*) FROM roles WHERE type='user' AND name={q(ROLE)}) = 1 THEN 1 "
+             f"ELSE json_extract('no role', '$') END;"]   # fails the batch if the role is missing
+    for m in create:
+        st = "enabled" if m.get("enabled", True) else "disabled"
+        name = (m.get("name") or m["username"]).strip() or m["username"]
+        stmts.append(
+            "INSERT INTO users (username, email, name, type, user_role_id, status, password_login) "
+            f"SELECT {q(m['username'])}, {q(m['email'].lower())}, {q(name)}, 'user', "
+            f"(SELECT id FROM roles WHERE type='user' AND name={q(ROLE)}), {q(st)}, false "
+            f"WHERE NOT EXISTS (SELECT 1 FROM users WHERE lower(email)={q(m['email'].lower())} OR username={q(m['username'])});")
+    for e, st in status:
+        stmts.append(f"UPDATE users SET status={q(st)}, updated_at=strftime('%Y-%m-%d %H:%M:%f+00:00', 'now') "
+                     f"WHERE type='user' AND lower(email)={q(e)};")
+    for e in leave:
+        stmts.append(f"UPDATE users SET status='disabled', updated_at=strftime('%Y-%m-%d %H:%M:%f+00:00', 'now') "
+                     f"WHERE type='user' AND lower(email)={q(e)};")
+    stmts.append("COMMIT;")
+    sql("\n".join(stmts) + "\n")
+    print("applied")
+
+
+if __name__ == "__main__":
+    main()

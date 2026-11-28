@@ -26,7 +26,8 @@ in sgnl_invited: they can finish their set-up in the login portal but
 reach no app (every app needs sgnl_users). finish-invite sets
 <user>@<domain> and swaps sgnl_invited for the given groups (sgnl_users is
 always added). finish-invite, group changes, disable and enable then run
-bin/sgnl-vault-sync, if the instance has vaultwarden/org.yaml.
+bin/sgnl-vault-sync, if the instance has vaultwarden/org.yaml, and
+bin/sgnl-listmonk-sync (listmonk accounts follow sgnl_users).
 
 Server: https://id.<apps>/realms/<realm>, vault item id-agent-client-secret.
 To try something first: a dev environment (docs/DEV.md, bin/sgnl-dev run).
@@ -147,6 +148,17 @@ def vault_sync():
         print(f"warning: Vaultwarden not synced ({out.splitlines()[-1] if out else 'failed'}); run bin/sgnl-vault-sync", file=sys.stderr)
 
 
+def listmonk_sync():
+    """listmonk users follow sgnl_users (bin/sgnl-listmonk-sync): the newsletter
+    tools act as the person's own listmonk user. A failure only warns."""
+    if os.environ.get("SGNL_NO_LISTMONK_SYNC"):
+        return
+    r = subprocess.run([os.path.join(ROOT, "bin", "sgnl-listmonk-sync")], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode:
+        print(f"warning: listmonk not synced ({out.splitlines()[-1] if out else 'failed'}); run bin/sgnl-listmonk-sync", file=sys.stderr)
+
+
 def freebusy_sync():
     """Colleagues see each other's free/busy (bin/sgnl-freebusy-sync). A person
     without a mailbox yet is picked up on the next run. A failure only warns."""
@@ -196,6 +208,7 @@ def main(argv):
         set_groups(a[0], **{"add" if cmd == "add-to-group" else "remove": a[1:]})
         print(f"{a[0]}: {','.join(sorted(user(a[0]).get('groups') or []))}")
         vault_sync()
+        listmonk_sync()
     elif cmd == "setup-email" and len(a) in (1, 2):
         user(a[0]); invite(a[0], int(a[1]) if len(a) == 2 else 24)
     elif cmd == "invite" and len(a) in (3, 4):
@@ -212,11 +225,13 @@ def main(argv):
         set_groups(a[0], add=["sgnl_users", *[g for g in a[1:] if g != "sgnl_users"]], remove=["sgnl_invited"])
         print(f"{a[0]}: email {email}, groups {','.join(sorted(user(a[0]).get('groups') or []))}")
         vault_sync()
+        listmonk_sync()
         freebusy_sync()
     elif cmd in ("disable", "enable") and len(a) == 1:
         api("PATCH", f"/users/{u(a[0])}", {"disabled": cmd == "disable"})
         print(f"{a[0]}: {cmd}d" + (" (every session and token ended)" if cmd == "disable" else " (they log in again)"))
         vault_sync()
+        listmonk_sync()
     elif cmd == "groups" and not a:
         print("\n".join(sorted(groups())))
     elif cmd == "create-group" and len(a) == 1:
